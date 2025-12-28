@@ -1,8 +1,5 @@
 ## 👋 Hi, I'm Jianbang
 
-- 🧑‍💻 Backend / AI System Engineer
-- 🚀 Focus on distributed systems, LLM training & inference
-- 🛠 Strong in engineering, debugging, and performance analysis
-
-## 📈 GitHub Stats
-![Metrics](./metrics.plugin.main.svg)
+- 🧑‍💻 AI System Engineer
+- 🔬 Working on large-scale distributed training and LLM inference (SGLang, vLLM)
+- 🛠 Focused on LLM engineering, accuracy debugging, and performance analysis
