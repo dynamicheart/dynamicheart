@@ -3,7 +3,7 @@ name: Deploy Pages
 on:
   push:
     branches: [gh_pages]
-    paths: [web/**, index.html]
+    paths: [web/**, index.html, .github/workflows/deploy-pages.yml]
   workflow_dispatch:
 
 permissions:
