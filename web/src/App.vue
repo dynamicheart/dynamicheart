@@ -4,6 +4,7 @@
       :params="params"
       :pdf-loaded="!!pdfDoc"
       :exporting="exporting"
+      :export-progress="exportProgress"
       @pdf-loaded="onPdfLoaded"
       @export="onExport"
     />
@@ -29,20 +30,23 @@ import { loadDefaultFont } from './utils/font.js'
 
 const {
   pdfDoc, pdfBytes, currentPage, totalPages,
-  pageWidth, pageHeight, loading,
+  pageWidth, pageHeight, loading, loadProgress,
   loadPdf, renderPage, prevPage, nextPage,
 } = usePdf()
 
 const { params, drawWatermarkOverlay, getColorRgb, invalidateCache, calcSpacing } = useWatermark()
-const { exporting, exportPdf } = useExport()
+const { exporting, exportProgress, exportPdf } = useExport()
 
 const previewRef = ref(null)
+const pdfFileName = ref('')
 
-async function onPdfLoaded(arrayBuffer) {
+async function onPdfLoaded(arrayBuffer, fileName) {
+  pdfFileName.value = fileName || ''
   await loadPdf(arrayBuffer)
 }
 
 async function onDropPdf(file) {
+  pdfFileName.value = file.name || ''
   const buf = await file.arrayBuffer()
   try { await loadDefaultFont() } catch {}
   await loadPdf(buf)
@@ -50,10 +54,10 @@ async function onDropPdf(file) {
 
 async function onExport() {
   if (!pdfBytes.value) return
-  await exportPdf(pdfBytes.value, params, getColorRgb, calcSpacing)
+  await exportPdf(pdfBytes.value, params, getColorRgb, calcSpacing, pdfFileName.value)
 }
 
-// Smooth watermark redraw using requestAnimationFrame
+// Watermark redraw on param change — use RAF for responsive feedback
 let rafId = null
 watch(
   () => [params.text, params.fontSize, params.opacity, params.angle, params.density, params.colorKey, params.customColor],

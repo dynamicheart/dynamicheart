@@ -90,10 +90,15 @@ export function useWatermark() {
   function drawWatermarkOverlay(canvas, scale = 1.5, cssWidth, cssHeight) {
     const ctx = canvas.getContext('2d')
 
-    const w = cssWidth || parseFloat(canvas.style.width) || canvas.width
-    const h = cssHeight || parseFloat(canvas.style.height) || canvas.height
+    // Work in PDF-point space to match export
+    const pdfW = cssWidth / scale
+    const pdfH = cssHeight / scale
+    const fontSize = params.fontSize
+    const angleRad = params.angle * Math.PI / 180
 
-    const fontSize = params.fontSize * (scale / 1.5)
+    ctx.save()
+    ctx.scale(scale, scale)
+
     ctx.font = `${fontSize}px "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`
     ctx.fillStyle = getColor(params.opacity)
     ctx.textAlign = 'center'
@@ -102,13 +107,13 @@ export function useWatermark() {
     const textWidth = ctx.measureText(params.text).width
     const { xSpacing, ySpacing } = calcSpacing(textWidth, fontSize, params.density)
 
-    const diag = Math.sqrt(w * w + h * h)
+    const diag = Math.sqrt(pdfW * pdfW + pdfH * pdfH)
     const cols = Math.ceil(diag / xSpacing) + 2
     const rows = Math.ceil(diag / ySpacing) + 2
 
-    ctx.save()
-    ctx.translate(w / 2, h / 2)
-    ctx.rotate((params.angle * Math.PI) / 180)
+    // Rotate entire grid + text together
+    ctx.translate(pdfW / 2, pdfH / 2)
+    ctx.rotate(-angleRad)
 
     for (let r = -rows; r <= rows; r++) {
       for (let c = -cols; c <= cols; c++) {

@@ -14,12 +14,19 @@ export function usePdf() {
   const pageWidth = ref(0)
   const pageHeight = ref(0)
   const loading = ref(false)
+  const loadProgress = ref(0)
 
   async function loadPdf(arrayBuffer) {
     loading.value = true
+    loadProgress.value = 0
     try {
       pdfBytes.value = new Uint8Array(arrayBuffer)
-      const doc = await pdfjsLib.getDocument({ data: pdfBytes.value.slice() }).promise
+      const loadingTask = pdfjsLib.getDocument({ data: pdfBytes.value.slice() })
+      loadingTask.onProgress = ({ loaded, total }) => {
+        if (total > 0) loadProgress.value = Math.round((loaded / total) * 100)
+      }
+      const doc = await loadingTask.promise
+      loadProgress.value = 100
       pdfDoc.value = doc
       totalPages.value = doc.numPages
       currentPage.value = 1
@@ -68,7 +75,7 @@ export function usePdf() {
 
   return {
     pdfDoc, pdfBytes, currentPage, totalPages,
-    pageWidth, pageHeight, loading,
+    pageWidth, pageHeight, loading, loadProgress,
     loadPdf, renderPage, prevPage, nextPage,
   }
 }

@@ -92,8 +92,11 @@
 
     <div class="panel-footer">
       <button class="export-btn" :disabled="!pdfLoaded || exporting" @click="$emit('export')">
-        {{ exporting ? '导出中...' : '导出带水印 PDF' }}
+        {{ exporting ? `生成中... ${exportProgress}%` : '导出带水印 PDF' }}
       </button>
+      <div v-if="exporting" class="export-progress-track">
+        <div class="export-progress-fill" :style="{ width: exportProgress + '%' }"></div>
+      </div>
     </div>
   </aside>
 </template>
@@ -106,6 +109,7 @@ const props = defineProps({
   params: Object,
   pdfLoaded: Boolean,
   exporting: Boolean,
+  exportProgress: Number,
 })
 
 const emit = defineEmits(['pdf-loaded', 'export'])
@@ -405,5 +409,21 @@ async function onFontSelect(e) {
 .export-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.export-progress-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.export-progress-fill {
+  height: 100%;
+  background: #4a90d9;
+  border-radius: 2px;
+  transition: width 0.15s ease;
 }
 </style>

@@ -18,6 +18,10 @@
         <div v-for="p in totalPages" :key="p" class="page-slot" :data-page="p" ref="pageRefs">
           <div class="page-number">{{ p }} / {{ totalPages }}</div>
           <div class="canvas-wrapper">
+            <div v-if="!pageRendered[p]" class="page-loading">
+              <div class="page-spinner"></div>
+              <span>渲染第 {{ p }} 页...</span>
+            </div>
             <canvas :ref="el => setPdfCanvas(p, el)" class="pdf-canvas"></canvas>
             <canvas :ref="el => setWmCanvas(p, el)" class="wm-canvas"></canvas>
           </div>
@@ -28,7 +32,7 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onUnmounted } from 'vue'
+import { ref, reactive, watch, nextTick, onUnmounted } from 'vue'
 
 const props = defineProps({
   pdfLoaded: Boolean,
@@ -47,6 +51,7 @@ const pdfCanvases = {}
 const wmCanvases = {}
 const renderedPages = new Set()
 const visiblePages = new Set()
+const pageRendered = reactive({})
 
 function setPdfCanvas(p, el) { if (el) pdfCanvases[p] = el }
 function setWmCanvas(p, el) { if (el) wmCanvases[p] = el }
@@ -107,12 +112,13 @@ async function renderSinglePage(pageNum) {
     ctx.scale(dpr, dpr)
     props.drawWatermark(wmCanvas, scale, result.cssWidth, result.cssHeight)
   }
+  pageRendered[pageNum] = true
 }
 
 function redrawAllWatermarks() {
   const dpr = window.devicePixelRatio || 1
   const scale = 1.5 * zoom.value
-  const pagesToRedraw = visiblePages.size > 0 ? visiblePages : renderedPages
+  const pagesToRedraw = renderedPages
   for (const pageNum of pagesToRedraw) {
     const pdfCanvas = pdfCanvases[pageNum]
     const wmCanvas = wmCanvases[pageNum]
@@ -122,11 +128,20 @@ function redrawAllWatermarks() {
     const cssH = parseFloat(pdfCanvas.style.height)
     if (!cssW || !cssH) continue
 
-    wmCanvas.style.width = cssW + 'px'
-    wmCanvas.style.height = cssH + 'px'
-    wmCanvas.width = Math.floor(cssW * dpr)
-    wmCanvas.height = Math.floor(cssH * dpr)
+    const bufW = Math.floor(cssW * dpr)
+    const bufH = Math.floor(cssH * dpr)
+
+    // Only reallocate buffer if dimensions changed — avoids expensive GPU realloc
+    if (wmCanvas.width !== bufW || wmCanvas.height !== bufH) {
+      wmCanvas.style.width = cssW + 'px'
+      wmCanvas.style.height = cssH + 'px'
+      wmCanvas.width = bufW
+      wmCanvas.height = bufH
+    }
+
     const ctx = wmCanvas.getContext('2d')
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, bufW, bufH)
     ctx.scale(dpr, dpr)
     props.drawWatermark(wmCanvas, scale, cssW, cssH)
   }
@@ -135,16 +150,8 @@ function redrawAllWatermarks() {
 // Re-render all pages on zoom change
 watch(zoom, () => {
   renderedPages.clear()
-  nextTick(() => {
-    if (pageRefs.value) {
-      for (const el of pageRefs.value) {
-        const pageNum = parseInt(el.dataset.page)
-        if (visiblePages.has(pageNum) || isInViewport(el)) {
-          renderSinglePage(pageNum)
-        }
-      }
-    }
-  })
+  Object.keys(pageRendered).forEach(k => delete pageRendered[k])
+  nextTick(setupObserver)
 })
 
 function isInViewport(el) {
@@ -163,6 +170,7 @@ watch(() => props.totalPages, () => {
   visiblePages.clear()
   Object.keys(pdfCanvases).forEach(k => delete pdfCanvases[k])
   Object.keys(wmCanvases).forEach(k => delete wmCanvases[k])
+  Object.keys(pageRendered).forEach(k => delete pageRendered[k])
   nextTick(setupObserver)
 })
 
@@ -300,6 +308,35 @@ defineExpose({ redrawAllWatermarks })
   border-radius: 4px;
   overflow: hidden;
   line-height: 0;
+  min-width: 200px;
+  min-height: 280px;
+}
+
+.page-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #fff;
+  z-index: 2;
+  font-size: 13px;
+  color: #999;
+}
+
+.page-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #e0e0e0;
+  border-top-color: #4a90d9;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .pdf-canvas {
