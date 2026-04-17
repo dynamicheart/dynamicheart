@@ -3,5 +3,5 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
-  base: '/dynamicheart/tools/pdf_watermark/',
+  base: process.env.BASE_PATH || '/tools/pdf_watermark/',
 })
