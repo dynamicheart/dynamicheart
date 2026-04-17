@@ -35,8 +35,8 @@ jobs:
 
       - name: Prepare site structure
         run: |
-          cp index.html _site/
           mkdir -p _site/tools/pdf_watermark
+          cp index.html _site/
           cp -r web/dist/* _site/tools/pdf_watermark/
 
       - uses: actions/upload-pages-artifact@v3
