@@ -9,7 +9,11 @@
     </div>
 
     <div class="preview-container" ref="scrollRef" @dragover.prevent @drop.prevent="onDrop">
-      <div v-if="!pdfLoaded" class="placeholder">
+      <div v-if="preparing" class="placeholder">
+        <div class="page-spinner"></div>
+        <p>正在加载 PDF 文件...</p>
+      </div>
+      <div v-else-if="!pdfLoaded" class="placeholder">
         <div class="placeholder-icon">PDF</div>
         <p>将 PDF 拖到此处</p>
         <p class="hint">或从左侧选择文件</p>
@@ -36,6 +40,7 @@ import { ref, reactive, watch, nextTick, onUnmounted } from 'vue'
 
 const props = defineProps({
   pdfLoaded: Boolean,
+  preparing: Boolean,
   totalPages: Number,
   renderPage: Function,
   drawWatermark: Function,
@@ -161,8 +166,9 @@ function isInViewport(el) {
   return rect.bottom > containerRect.top - 300 && rect.top < containerRect.bottom + 300
 }
 
-watch(() => props.pdfLoaded, (v) => {
-  if (v) nextTick(setupObserver)
+// Setup observer when PDF is loaded AND preparing is done (DOM has page elements)
+watch([() => props.pdfLoaded, () => props.preparing], ([loaded, prep]) => {
+  if (loaded && !prep) nextTick(setupObserver)
 })
 
 watch(() => props.totalPages, () => {

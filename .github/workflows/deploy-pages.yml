@@ -27,6 +27,12 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Download font
+        run: |
+          mkdir -p web/public/fonts
+          curl -sL -o web/public/fonts/NotoSansSC-Regular.ttf \
+            "https://fonts.gstatic.com/s/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYxNbPzS5HE.ttf"
+
       - name: Install & Build
         working-directory: web
         env:

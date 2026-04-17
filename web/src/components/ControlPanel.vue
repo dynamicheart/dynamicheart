@@ -22,6 +22,7 @@
           <input type="file" accept=".ttf,.otf,.woff,.woff2" hidden @change="onFontSelect" />
         </label>
         <span v-if="fontLoading" class="loading-text">加载字体中...</span>
+        <span v-if="fontError || props.fontError" class="error-text">{{ fontError || props.fontError }}</span>
       </div>
 
       <hr class="divider" />
@@ -91,8 +92,8 @@
     </div>
 
     <div class="panel-footer">
-      <button class="export-btn" :disabled="!pdfLoaded || exporting" @click="$emit('export')">
-        {{ exporting ? `生成中... ${exportProgress}%` : '导出带水印 PDF' }}
+      <button class="export-btn" :disabled="!pdfLoaded || exporting || !!(fontError || props.fontError)" @click="$emit('export')">
+        {{ exporting ? `生成中... ${exportProgress}%` : (fontError || props.fontError) ? '请先加载字体' : '导出带水印 PDF' }}
       </button>
       <div v-if="exporting" class="export-progress-track">
         <div class="export-progress-fill" :style="{ width: exportProgress + '%' }"></div>
@@ -110,12 +111,14 @@ const props = defineProps({
   pdfLoaded: Boolean,
   exporting: Boolean,
   exportProgress: Number,
+  fontError: String,
 })
 
-const emit = defineEmits(['pdf-loaded', 'export'])
+const emit = defineEmits(['pdf-loaded', 'export', 'font-loaded'])
 
 const fontLoading = ref(false)
 const fontName = ref('')
+const fontError = ref('')
 
 const densityOptions = [
   { key: 'sparse', label: '疏' },
@@ -135,7 +138,12 @@ async function onPdfSelect(e) {
   if (!file) return
 
   fontLoading.value = true
-  try { await loadDefaultFont() } catch {}
+  fontError.value = ''
+  try {
+    await loadDefaultFont()
+  } catch {
+    fontError.value = '默认字体加载失败，请上传本地字体文件（.ttf/.otf）'
+  }
   fontLoading.value = false
 
   const buf = await file.arrayBuffer()
@@ -146,9 +154,11 @@ async function onFontSelect(e) {
   const file = e.target.files[0]
   if (!file) return
   fontLoading.value = true
+  fontError.value = ''
   try {
     await loadLocalFont(file)
     fontName.value = file.name
+    emit('font-loaded')
   } catch (err) {
     alert('字体加载失败: ' + err.message)
   } finally {
@@ -291,6 +301,14 @@ async function onFontSelect(e) {
   color: #999;
   margin-top: 4px;
   display: block;
+}
+
+.error-text {
+  font-size: 12px;
+  color: #e04040;
+  margin-top: 4px;
+  display: block;
+  line-height: 1.4;
 }
 
 /* Text area */

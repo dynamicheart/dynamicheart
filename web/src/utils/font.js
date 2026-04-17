@@ -1,12 +1,17 @@
-const FONT_CDN_URL = 'https://fonts.gstatic.com/s/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYxNbPzS5HE.ttf'
-const FONT_CDN_URL_FALLBACK = 'https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-sc@latest/chinese-simplified-400-normal.woff2'
+const LOCAL_FONT_PATH = `${import.meta.env.BASE_URL}fonts/NotoSansSC-Regular.ttf`
+const FONT_CDN_URLS = [
+  'https://fonts.gstatic.com/s/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYxNbPzS5HE.ttf',
+  'https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-sc@latest/chinese-simplified-400-normal.woff2',
+]
 
 let cachedFontBytes = null
 
 export async function loadDefaultFont() {
   if (cachedFontBytes) return cachedFontBytes
 
-  for (const url of [FONT_CDN_URL, FONT_CDN_URL_FALLBACK]) {
+  // Try local bundled font first, then CDN fallbacks
+  const urls = [LOCAL_FONT_PATH, ...FONT_CDN_URLS]
+  for (const url of urls) {
     try {
       const resp = await fetch(url)
       if (!resp.ok) continue
@@ -16,7 +21,7 @@ export async function loadDefaultFont() {
       continue
     }
   }
-  throw new Error('Failed to load font from CDN')
+  throw new Error('字体加载失败，请上传本地字体文件')
 }
 
 export async function loadLocalFont(file) {

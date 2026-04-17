@@ -5,12 +5,15 @@
       :pdf-loaded="!!pdfDoc"
       :exporting="exporting"
       :export-progress="exportProgress"
+      :font-error="fontError"
       @pdf-loaded="onPdfLoaded"
       @export="onExport"
+      @font-loaded="fontError = ''"
     />
     <PdfPreview
       ref="previewRef"
       :pdf-loaded="!!pdfDoc"
+      :preparing="preparing"
       :total-pages="totalPages"
       :render-page="renderPage"
       :draw-watermark="drawWatermarkOverlay"
@@ -20,13 +23,13 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import ControlPanel from './components/ControlPanel.vue'
 import PdfPreview from './components/PdfPreview.vue'
 import { usePdf } from './composables/usePdf.js'
 import { useWatermark } from './composables/useWatermark.js'
 import { useExport } from './composables/useExport.js'
-import { loadDefaultFont } from './utils/font.js'
+import { loadDefaultFont, getCachedFont } from './utils/font.js'
 
 const {
   pdfDoc, pdfBytes, currentPage, totalPages,
@@ -37,19 +40,31 @@ const {
 const { params, drawWatermarkOverlay, getColorRgb, invalidateCache, calcSpacing } = useWatermark()
 const { exporting, exportProgress, exportPdf } = useExport()
 
+// Preload font on page open so it's ready when user selects a PDF
+onMounted(() => {
+  loadDefaultFont().catch(() => {})
+})
+
 const previewRef = ref(null)
 const pdfFileName = ref('')
+const fontError = ref('')
+const preparing = ref(false)
 
 async function onPdfLoaded(arrayBuffer, fileName) {
+  preparing.value = true
   pdfFileName.value = fileName || ''
   await loadPdf(arrayBuffer)
+  preparing.value = false
 }
 
 async function onDropPdf(file) {
+  preparing.value = true
   pdfFileName.value = file.name || ''
   const buf = await file.arrayBuffer()
   try { await loadDefaultFont() } catch {}
   await loadPdf(buf)
+  fontError.value = getCachedFont() ? '' : '默认字体加载失败，请上传本地字体文件'
+  preparing.value = false
 }
 
 async function onExport() {
