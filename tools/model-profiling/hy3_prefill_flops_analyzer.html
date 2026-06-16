@@ -1,0 +1,1178 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HY3-Preview Prefill FLOPs 分析器</title>
+    <style>
+      :root {
+        --bg: #1a1b26;
+        --surface: #24283b;
+        --surface2: #2f3549;
+        --border: #414868;
+        --text: #c0caf5;
+        --text-dim: #565f89;
+        --accent: #7aa2f7;
+        --accent2: #bb9af7;
+        --green: #9ece6a;
+        --orange: #ff9e64;
+        --red: #f7768e;
+        --cyan: #7dcfff;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 2rem;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+      h1 {
+        text-align: center;
+        color: var(--accent);
+        font-size: 1.5rem;
+        margin-bottom: 0.5rem;
+      }
+      .subtitle {
+        text-align: center;
+        color: var(--text-dim);
+        font-size: 0.85rem;
+        margin-bottom: 2rem;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        gap: 1.5rem;
+      }
+      @media (max-width: 1000px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1.25rem;
+      }
+      .panel-title {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--accent2);
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .input-group {
+        margin-bottom: 1rem;
+      }
+      .input-group label {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--text-dim);
+        margin-bottom: 0.3rem;
+      }
+      .input-group input,
+      .input-group select {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-family: inherit;
+        font-size: 0.9rem;
+      }
+      .input-group input:focus,
+      .input-group select:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+      }
+
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+      }
+      .toggle-row input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--accent2);
+      }
+      .toggle-row label {
+        font-size: 0.8rem;
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      .cp-note {
+        font-size: 0.7rem;
+        color: var(--text-dim);
+        margin-top: 0.5rem;
+        margin-bottom: 1rem;
+        line-height: 1.4;
+      }
+      .config-summary {
+        background: var(--bg);
+        border-radius: 4px;
+        padding: 0.6rem 0.75rem;
+        font-size: 0.75rem;
+        color: var(--text-dim);
+        line-height: 1.6;
+      }
+      .config-summary span {
+        color: var(--cyan);
+      }
+
+      .cp-badge {
+        display: inline-block;
+        background: var(--accent2);
+        color: var(--bg);
+        font-size: 0.65rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 3px;
+        font-weight: 600;
+      }
+
+      .results {
+        display: grid;
+        gap: 1rem;
+      }
+      .result-section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+      }
+      .result-section .section-title {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--accent);
+        margin-bottom: 0.75rem;
+      }
+
+      .total-section {
+        background: linear-gradient(135deg, var(--surface2), var(--surface));
+        border-color: var(--accent);
+      }
+      .total-section .section-title {
+        color: var(--green);
+        font-size: 0.85rem;
+      }
+
+      .result-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.3rem 0;
+        font-size: 0.85rem;
+      }
+      .result-row .label {
+        color: var(--text-dim);
+      }
+      .result-row .value {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .result-row.total {
+        border-top: 1px solid var(--border);
+        margin-top: 0.5rem;
+        padding-top: 0.6rem;
+        font-weight: 600;
+      }
+      .result-row.total .value {
+        color: var(--green);
+      }
+      .result-row.grand .value {
+        font-size: 1.1rem;
+        color: var(--green);
+      }
+
+      .perf-bar {
+        margin-top: 0.75rem;
+      }
+      .perf-bar-track {
+        height: 22px;
+        background: var(--bg);
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+      }
+      .perf-bar-seg {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.6rem;
+        color: var(--bg);
+        font-weight: 600;
+        min-width: 1px;
+      }
+      .perf-legend {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 0.4rem;
+        flex-wrap: wrap;
+        font-size: 0.68rem;
+        color: var(--text-dim);
+      }
+      .perf-legend-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        margin-right: 0.2rem;
+        vertical-align: middle;
+      }
+
+      .op-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.76rem;
+      }
+      .op-table th {
+        text-align: left;
+        padding: 0.5rem 0.5rem;
+        color: var(--accent);
+        border-bottom: 1px solid var(--border);
+        font-weight: 500;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .op-table td {
+        padding: 0.45rem 0.5rem;
+        border-bottom: 1px solid var(--surface2);
+      }
+      .op-table tr:hover td {
+        background: var(--surface2);
+      }
+      .op-table .op-name {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .op-table .op-shape {
+        color: var(--cyan);
+        font-size: 0.7rem;
+      }
+      .op-table .op-comm {
+        color: var(--orange);
+        font-size: 0.7rem;
+      }
+      .op-table .op-count {
+        color: var(--text-dim);
+        text-align: center;
+      }
+      .op-table .op-flops {
+        color: var(--green);
+        text-align: right;
+        font-weight: 500;
+      }
+      .op-table .op-total {
+        color: var(--green);
+        text-align: right;
+        font-weight: 600;
+      }
+      .op-table .op-bytes {
+        color: var(--accent2);
+        text-align: right;
+        font-size: 0.7rem;
+      }
+      .op-table .section-header td {
+        background: var(--surface2);
+        font-weight: 600;
+        color: var(--accent2);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.6rem 0.5rem;
+      }
+
+      .diff-negative {
+        color: var(--green);
+        font-size: 0.75rem;
+      }
+      .diff-positive {
+        color: var(--red);
+        font-size: 0.75rem;
+      }
+
+      .cmp-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.76rem;
+      }
+      .cmp-table th {
+        text-align: right;
+        padding: 0.5rem 0.5rem;
+        color: var(--accent);
+        border-bottom: 1px solid var(--border);
+        font-weight: 500;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .cmp-table th:first-child {
+        text-align: left;
+      }
+      .cmp-table td {
+        padding: 0.45rem 0.5rem;
+        border-bottom: 1px solid var(--surface2);
+        text-align: right;
+      }
+      .cmp-table td:first-child {
+        text-align: left;
+      }
+      .cmp-table tr:hover td {
+        background: var(--surface2);
+      }
+      .cmp-table .cmp-name {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .cmp-table .cmp-base {
+        color: var(--text-dim);
+      }
+      .cmp-table .cmp-cur {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .cmp-table .cmp-diff {
+        min-width: 60px;
+      }
+      .cmp-table .cmp-new {
+        color: var(--accent2);
+        font-style: italic;
+        font-size: 0.7rem;
+      }
+      .cmp-table .cmp-gone {
+        color: var(--text-dim);
+        font-style: italic;
+        font-size: 0.7rem;
+        text-decoration: line-through;
+      }
+      .cmp-table .section-header td {
+        background: var(--surface2);
+        font-weight: 600;
+        color: var(--accent2);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.6rem 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>HY3-Preview Prefill FLOPs 分析器</h1>
+      <p class="subtitle">逐算子运算量 + 通信量定量分析 | HYV3ForCausalLM</p>
+
+      <div class="grid">
+        <div>
+          <div class="panel">
+            <div class="panel-title">参数配置</div>
+            <div class="input-group">
+              <label>序列长度</label>
+              <div class="input-row">
+                <input type="number" id="seq_len" value="16" min="1" />
+                <select id="seq_unit">
+                  <option value="1024" selected>K (×1024)</option>
+                  <option value="1">tokens</option>
+                </select>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>批大小</label>
+              <input type="number" id="batch_size" value="1" min="1" />
+            </div>
+            <div class="input-group">
+              <label>卡数</label>
+              <select id="ngpus">
+                <option value="8" selected>8</option>
+                <option value="16">16</option>
+              </select>
+            </div>
+            <div class="input-row">
+              <div class="input-group">
+                <label>TP</label>
+                <select id="tp_size"></select>
+              </div>
+              <div class="input-group">
+                <label>PCP (卡数/TP)</label>
+                <input
+                  type="text"
+                  id="pcp_display"
+                  readonly
+                  style="opacity: 0.7; cursor: not-allowed"
+                />
+              </div>
+            </div>
+            <div class="cp-note" id="cp_desc" style="display: none">
+              PCP: 每设备处理 seq/PCP 的 Q，逐层 all-gather KV。
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="enable_ep" checked />
+              <label for="enable_ep">启用 EP (按专家数分片)</label>
+            </div>
+            <div class="input-group">
+              <label>数据类型</label>
+              <select id="dtype">
+                <option value="2">BF16 / FP16 (2B)</option>
+                <option value="4">FP32 (4B)</option>
+              </select>
+            </div>
+          </div>
+          <div class="panel" style="margin-top: 1rem">
+            <div class="panel-title">模型</div>
+            <div class="config-summary">
+              H=<span>4096</span> heads=<span>64</span>(kv:<span>8</span>)
+              dim=<span>128</span><br />
+              80 layers (1 dense + 79 MoE)<br />
+              192 experts top-8, shared=1<br />
+              expert_dim=<span>1536</span> ffn_dim=<span>13312</span>
+            </div>
+          </div>
+        </div>
+        <div class="results" id="results"></div>
+      </div>
+    </div>
+
+    <script>
+      const M = {
+        H: 4096,
+        Nh: 64,
+        Nkv: 8,
+        D: 128,
+        L: 80,
+        I: 13312,
+        Edim: 1536,
+        Nexp: 192,
+        topK: 8,
+        Nshared: 1,
+        firstK: 1,
+      };
+
+      function getSeqLen() {
+        return (
+          (parseInt(document.getElementById("seq_len").value) || 16) *
+          parseInt(document.getElementById("seq_unit").value)
+        );
+      }
+      function getCfg() {
+        const seqLen = getSeqLen();
+        const bs = parseInt(document.getElementById("batch_size").value) || 1;
+        const ngpus = parseInt(document.getElementById("ngpus").value);
+        const tp = parseInt(document.getElementById("tp_size").value);
+        const pcp = ngpus / tp;
+        const ep = document.getElementById("enable_ep").checked;
+        const bpe = parseInt(document.getElementById("dtype").value);
+        const totalTokens = seqLen * bs;
+        const S = pcp > 1 ? Math.ceil(totalTokens / pcp) : totalTokens;
+        return {
+          seqLen,
+          bs,
+          ngpus,
+          tp,
+          pcp,
+          ep,
+          bpe,
+          totalTokens,
+          S,
+          S_full: totalTokens,
+        };
+      }
+
+      function kvH(tp) {
+        return tp <= M.Nkv ? Math.floor(M.Nkv / tp) : 1;
+      }
+
+      function fmtFlops(f) {
+        if (f >= 1e15) return (f / 1e15).toFixed(2) + " PFLOPs";
+        if (f >= 1e12) return (f / 1e12).toFixed(2) + " TFLOPs";
+        if (f >= 1e9) return (f / 1e9).toFixed(2) + " GFLOPs";
+        if (f >= 1e6) return (f / 1e6).toFixed(2) + " MFLOPs";
+        return f.toFixed(0) + " FLOPs";
+      }
+
+      function fmtBytes(b) {
+        if (b >= 1e12) return (b / 1e12).toFixed(2) + " TB";
+        if (b >= 1e9) return (b / 1e9).toFixed(2) + " GB";
+        if (b >= 1e6) return (b / 1e6).toFixed(2) + " MB";
+        if (b >= 1e3) return (b / 1e3).toFixed(2) + " KB";
+        return b + " B";
+      }
+
+      function diffStr(before, after) {
+        if (before === after || before === 0) return "";
+        const pct = (((after - before) / before) * 100).toFixed(0);
+        return after < before
+          ? `<span class="diff-negative">↓${-pct}%</span>`
+          : `<span class="diff-positive">↑${pct}%</span>`;
+      }
+
+      // GEMM FLOPs: 2×M×N×K (multiply-add)
+      function gemmFlops(m, n, k) {
+        return 2 * m * n * k;
+      }
+
+      // Flash Attention FLOPs: per Q head: 2×S_q×S_kv×D (QK^T) + 2×S_q×S_kv×D (×V) = 4×S_q×S_kv×D
+      // Total: num_q_heads × 4 × S_q × S_kv × D
+      function flashAttnFlops(numQHeads, Sq, Skv, D) {
+        return numQHeads * 4 * Sq * Skv * D;
+      }
+
+      // Communication bytes (all-gather): each rank contributes local_size, gather to full
+      function allGatherBytes(localElems, bpe) {
+        return localElems * bpe;
+      } // data sent per device (approximately)
+      // AllReduce bytes: 2*(n-1)/n * size (ring allreduce), need group size
+      function allReduceBytes(elems, bpe, groupSize) {
+        if (!groupSize || groupSize <= 1) return 0;
+        return ((2 * (groupSize - 1)) / groupSize) * elems * bpe;
+      }
+      // All2All bytes: each device sends ~total/ngpus to each other device
+      function all2allBytes(localElems, bpe) {
+        return localElems * bpe;
+      } // approx send volume
+
+      function buildOps(cfg) {
+        const { tp, pcp, ngpus, ep, bpe, S, S_full } = cfg;
+        const qH = Math.floor(M.Nh / tp);
+        const kvHd = kvH(tp);
+        const ops = [];
+
+        // ═══ ATTENTION (×80) ═══
+        ops.push({ section: "Attention (×80 层)", sectionKey: "attn" });
+
+        // LayerNorm: ~5*S*H element-wise ops (approximate as 5 ops per element)
+        ops.push({
+          id: "attn_layernorm",
+          name: "RMSNorm",
+          shape: `[${S}, ${M.H}]`,
+          flops: 5 * S * M.H, // approx: square, mean, rsqrt, mul, mul
+          commBytes: 0,
+          commDesc: null,
+          count: 80,
+        });
+
+        // QKV GEMM
+        const qkvOut = (qH + 2 * kvHd) * M.D;
+        ops.push({
+          id: "attn_qkv",
+          name: "QKV Proj (GEMM)",
+          shape: `[${S}, ${M.H}] × [${M.H}, ${qkvOut}]`,
+          flops: gemmFlops(S, qkvOut, M.H),
+          commBytes: 0,
+          commDesc: null,
+          count: 80,
+        });
+
+        // QK Norm + RoPE: element-wise on Q and K
+        ops.push({
+          id: "attn_norm_rope",
+          name: "QK Norm + RoPE",
+          shape: `Q:[${S},${qH},${M.D}] K:[${S},${kvHd},${M.D}]`,
+          flops:
+            5 * S * qH * M.D + 5 * S * kvHd * M.D + 6 * S * (qH + kvHd) * M.D, // norm + rope
+          commBytes: 0,
+          commDesc: null,
+          count: 80,
+        });
+
+        // All-gather KV (PCP)
+        if (pcp > 1) {
+          const agElems = S * kvHd * M.D * 2; // K + V
+          ops.push({
+            id: "attn_ag_kv",
+            name: "All-gather KV (PCP)",
+            shape: `[${S},${kvHd},${M.D}]×2 → [${S_full},${kvHd},${M.D}]×2`,
+            flops: 0,
+            commBytes: agElems * bpe,
+            commDesc: `PCP group(${pcp})`,
+            count: 80,
+          });
+        }
+
+        // Flash Attention
+        const Skv = pcp > 1 ? S_full : S;
+        ops.push({
+          id: "attn_fa",
+          name: "Flash Attention",
+          shape: `Q:[${S},${qH},${M.D}] × KV:[${Skv},${kvHd},${M.D}]`,
+          flops: flashAttnFlops(qH, S, Skv, M.D),
+          commBytes: 0,
+          commDesc: null,
+          count: 80,
+        });
+
+        // O Proj GEMM
+        const oDimIn = qH * M.D;
+        ops.push({
+          id: "attn_o",
+          name: "O Proj (GEMM)",
+          shape: `[${S}, ${oDimIn}] × [${oDimIn}, ${M.H}]`,
+          flops: gemmFlops(S, M.H, oDimIn),
+          commBytes: 0,
+          commDesc: null,
+          count: 80,
+        });
+
+        // AllReduce (TP)
+        ops.push({
+          id: "attn_ar",
+          name: "AllReduce (TP)",
+          shape: `[${S}, ${M.H}]`,
+          flops: 0,
+          commBytes: tp > 1 ? allReduceBytes(S * M.H, bpe, tp) : 0,
+          commDesc: tp > 1 ? `TP group(${tp})` : null,
+          count: 80,
+        });
+
+        // Residual
+        ops.push({
+          id: "attn_res",
+          name: "Residual Add",
+          shape: `[${S}, ${M.H}]`,
+          flops: S * M.H,
+          commBytes: 0,
+          commDesc: null,
+          count: 80,
+        });
+
+        // ═══ DENSE FFN (×1) ═══
+        const intTP = Math.floor(M.I / tp);
+        ops.push({ section: "Dense FFN (×1 层)", sectionKey: "dense" });
+
+        ops.push({
+          id: "dense_ln",
+          name: "RMSNorm",
+          shape: `[${S}, ${M.H}]`,
+          flops: 5 * S * M.H,
+          commBytes: 0,
+          commDesc: null,
+          count: 1,
+        });
+        ops.push({
+          id: "dense_up",
+          name: "Gate+Up Proj (GEMM)",
+          shape: `[${S}, ${M.H}] × [${M.H}, ${2 * intTP}]`,
+          flops: gemmFlops(S, 2 * intTP, M.H),
+          commBytes: 0,
+          commDesc: null,
+          count: 1,
+        });
+        ops.push({
+          id: "dense_silu",
+          name: "SiLU + Mul",
+          shape: `[${S}, ${2 * intTP}] → [${S}, ${intTP}]`,
+          flops: 4 * S * intTP, // silu ≈ 3 ops + mul
+          commBytes: 0,
+          commDesc: null,
+          count: 1,
+        });
+        ops.push({
+          id: "dense_down",
+          name: "Down Proj (GEMM)",
+          shape: `[${S}, ${intTP}] × [${intTP}, ${M.H}]`,
+          flops: gemmFlops(S, M.H, intTP),
+          commBytes: 0,
+          commDesc: null,
+          count: 1,
+        });
+        ops.push({
+          id: "dense_ar",
+          name: "AllReduce (TP)",
+          shape: `[${S}, ${M.H}]`,
+          flops: 0,
+          commBytes: tp > 1 ? allReduceBytes(S * M.H, bpe, tp) : 0,
+          commDesc: tp > 1 ? `TP group(${tp})` : null,
+          count: 1,
+        });
+        ops.push({
+          id: "dense_res",
+          name: "Residual Add",
+          shape: `[${S}, ${M.H}]`,
+          flops: S * M.H,
+          commBytes: 0,
+          commDesc: null,
+          count: 1,
+        });
+
+        // ═══ MoE (×79) ═══
+        const numMoE = M.L - M.firstK;
+        ops.push({
+          section: `MoE (×${numMoE} 层, ${ep ? "EP" : "ETP"})`,
+          sectionKey: "moe",
+        });
+
+        ops.push({
+          id: "moe_ln",
+          name: "RMSNorm",
+          shape: `[${S}, ${M.H}]`,
+          flops: 5 * S * M.H,
+          commBytes: 0,
+          commDesc: null,
+          count: numMoE,
+        });
+        ops.push({
+          id: "moe_gate",
+          name: "Router Gate (GEMM)",
+          shape: `[${S}, ${M.H}] × [${M.H}, ${M.Nexp}]`,
+          flops: gemmFlops(S, M.Nexp, M.H),
+          commBytes: 0,
+          commDesc: null,
+          count: numMoE,
+        });
+
+        if (ep) {
+          // EP All2All spans all ngpus. After gathering tokens from all PCP ranks,
+          // total pairs globally = S_full * topK, distributed to ngpus uniformly.
+          const pairsLocal = Math.floor((S_full * M.topK) / ngpus);
+          ops.push({
+            id: "moe_a2a_d",
+            name: "All2All Dispatch",
+            shape: `[${S}, ${M.H}] → 分发到 ${ngpus} 卡`,
+            flops: 0,
+            commBytes: all2allBytes((S * M.topK * M.H) / ngpus, bpe),
+            commDesc: `EP group(${ngpus})`,
+            count: numMoE,
+          });
+          ops.push({
+            id: "moe_exp_up",
+            name: "Expert Gate+Up (GEMM)",
+            shape: `[${pairsLocal}, ${M.H}] × [${M.H}, ${2 * M.Edim}]`,
+            flops: gemmFlops(pairsLocal, 2 * M.Edim, M.H),
+            commBytes: 0,
+            commDesc: null,
+            count: numMoE,
+          });
+          ops.push({
+            id: "moe_exp_silu",
+            name: "Expert SiLU + Mul",
+            shape: `[${pairsLocal}, ${2 * M.Edim}] → [${pairsLocal}, ${M.Edim}]`,
+            flops: 4 * pairsLocal * M.Edim,
+            commBytes: 0,
+            commDesc: null,
+            count: numMoE,
+          });
+          ops.push({
+            id: "moe_exp_down",
+            name: "Expert Down (GEMM)",
+            shape: `[${pairsLocal}, ${M.Edim}] × [${M.Edim}, ${M.H}]`,
+            flops: gemmFlops(pairsLocal, M.H, M.Edim),
+            commBytes: 0,
+            commDesc: null,
+            count: numMoE,
+          });
+          ops.push({
+            id: "moe_a2a_c",
+            name: "All2All Combine",
+            shape: `收集结果 → [${S}, ${M.H}]`,
+            flops: 0,
+            commBytes: all2allBytes((S * M.topK * M.H) / ngpus, bpe),
+            commDesc: `EP group(${ngpus})`,
+            count: numMoE,
+          });
+          // TP AllReduce after routed+shared combine (shared expert uses TP sharding)
+          if (tp > 1) {
+            ops.push({
+              id: "moe_tp_ar",
+              name: "AllReduce (TP, post-MoE)",
+              shape: `[${S}, ${M.H}]`,
+              flops: 0,
+              commBytes: allReduceBytes(S * M.H, bpe, tp),
+              commDesc: `TP group(${tp})`,
+              count: numMoE,
+            });
+          }
+        } else {
+          const dimLocal = Math.floor(M.Edim / ngpus);
+          const pairs = S * M.topK;
+          ops.push({
+            id: "moe_exp_up",
+            name: "Expert Gate+Up (GEMM, ETP)",
+            shape: `[${pairs}, ${M.H}] × [${M.H}, ${2 * dimLocal}]`,
+            flops: gemmFlops(pairs, 2 * dimLocal, M.H),
+            commBytes: 0,
+            commDesc: null,
+            count: numMoE,
+          });
+          ops.push({
+            id: "moe_exp_silu",
+            name: "Expert SiLU + Mul",
+            shape: `[${pairs}, ${2 * dimLocal}] → [${pairs}, ${dimLocal}]`,
+            flops: 4 * pairs * dimLocal,
+            commBytes: 0,
+            commDesc: null,
+            count: numMoE,
+          });
+          ops.push({
+            id: "moe_exp_down",
+            name: "Expert Down (GEMM, ETP)",
+            shape: `[${pairs}, ${dimLocal}] × [${dimLocal}, ${M.H}]`,
+            flops: gemmFlops(pairs, M.H, dimLocal),
+            commBytes: 0,
+            commDesc: null,
+            count: numMoE,
+          });
+          ops.push({
+            id: "moe_ar",
+            name: "AllReduce (ETP)",
+            shape: `[${S}, ${M.H}]`,
+            flops: 0,
+            commBytes: allReduceBytes(S * M.H, bpe, ngpus),
+            commDesc: `全卡(${ngpus})`,
+            count: numMoE,
+          });
+        }
+
+        // Shared expert
+        const sharedDim = Math.floor((M.Edim * M.Nshared) / tp);
+        ops.push({
+          id: "moe_sh_up",
+          name: "Shared Expert Up (GEMM)",
+          shape: `[${S}, ${M.H}] × [${M.H}, ${2 * sharedDim}]`,
+          flops: gemmFlops(S, 2 * sharedDim, M.H),
+          commBytes: 0,
+          commDesc: null,
+          count: numMoE,
+        });
+        ops.push({
+          id: "moe_sh_silu",
+          name: "Shared SiLU + Mul",
+          shape: `[${S}, ${2 * sharedDim}] → [${S}, ${sharedDim}]`,
+          flops: 4 * S * sharedDim,
+          commBytes: 0,
+          commDesc: null,
+          count: numMoE,
+        });
+        ops.push({
+          id: "moe_sh_down",
+          name: "Shared Expert Down (GEMM)",
+          shape: `[${S}, ${sharedDim}] × [${sharedDim}, ${M.H}]`,
+          flops: gemmFlops(S, M.H, sharedDim),
+          commBytes: 0,
+          commDesc: null,
+          count: numMoE,
+        });
+        ops.push({
+          id: "moe_combine",
+          name: "Combine + Residual",
+          shape: `[${S}, ${M.H}]`,
+          flops: 2 * S * M.H, // weighted sum + residual add
+          commBytes: 0,
+          commDesc: null,
+          count: numMoE,
+        });
+
+        return ops;
+      }
+
+      // ── TP/PCP linkage ──
+      function updateTPOptions() {
+        const ngpus = parseInt(document.getElementById("ngpus").value);
+        const sel = document.getElementById("tp_size");
+        const cur = parseInt(sel.value) || ngpus;
+        const opts = [];
+        for (let t = 1; t <= ngpus; t *= 2) if (ngpus % t === 0) opts.push(t);
+        sel.innerHTML = opts
+          .map(
+            (t) =>
+              `<option value="${t}" ${t === ngpus ? "selected" : ""}>${t}</option>`,
+          )
+          .join("");
+        if (!opts.includes(cur)) sel.value = ngpus;
+        updatePCP();
+      }
+      function updatePCP() {
+        const ngpus = parseInt(document.getElementById("ngpus").value);
+        const tp = parseInt(document.getElementById("tp_size").value);
+        const pcp = ngpus / tp;
+        document.getElementById("pcp_display").value =
+          pcp > 1 ? pcp : "1 (关闭)";
+        document.getElementById("cp_desc").style.display =
+          pcp > 1 ? "block" : "none";
+      }
+
+      function render() {
+        const cfg = getCfg();
+        const ops = buildOps(cfg);
+        const cpLabel =
+          cfg.pcp > 1 ? ` <span class="cp-badge">PCP×${cfg.pcp}</span>` : "";
+        const epLabel = cfg.ep ? "EP" : "ETP";
+
+        // Aggregate by section
+        let totalFlops = 0,
+          totalComm = 0;
+        let sectionFlops = {},
+          sectionComm = {};
+        let currentKey = "";
+        ops.forEach((op) => {
+          if (op.section) {
+            currentKey = op.sectionKey;
+            sectionFlops[currentKey] = 0;
+            sectionComm[currentKey] = 0;
+            return;
+          }
+          const f = op.flops * op.count;
+          const c = op.commBytes * op.count;
+          totalFlops += f;
+          totalComm += c;
+          sectionFlops[currentKey] += f;
+          sectionComm[currentKey] += c;
+        });
+
+        // Baseline (pure TP)
+        let baselineFlops = totalFlops,
+          baselineComm = totalComm;
+        let baselineSectionFlops = { ...sectionFlops },
+          baselineSectionComm = { ...sectionComm };
+        if (cfg.pcp > 1) {
+          const bCfg = {
+            ...cfg,
+            tp: cfg.ngpus,
+            pcp: 1,
+            S: cfg.totalTokens,
+            S_full: cfg.totalTokens,
+          };
+          const bOps = buildOps(bCfg);
+          baselineFlops = 0;
+          baselineComm = 0;
+          baselineSectionFlops = {};
+          baselineSectionComm = {};
+          let bKey = "";
+          bOps.forEach((op) => {
+            if (op.section) {
+              bKey = op.sectionKey;
+              baselineSectionFlops[bKey] = 0;
+              baselineSectionComm[bKey] = 0;
+              return;
+            }
+            const f = op.flops * op.count;
+            const c = op.commBytes * op.count;
+            baselineFlops += f;
+            baselineComm += c;
+            baselineSectionFlops[bKey] += f;
+            baselineSectionComm[bKey] += c;
+          });
+        }
+
+        const seqDisp =
+          parseInt(document.getElementById("seq_unit").value) === 1024
+            ? `${document.getElementById("seq_len").value}K`
+            : cfg.seqLen;
+
+        const attnPct =
+          totalFlops > 0 ? (sectionFlops.attn / totalFlops) * 100 : 0;
+        const densePct =
+          totalFlops > 0 ? (sectionFlops.dense / totalFlops) * 100 : 0;
+        const moePct =
+          totalFlops > 0 ? (sectionFlops.moe / totalFlops) * 100 : 0;
+
+        let html = `
+                <div class="result-section total-section">
+                    <div class="section-title">运算量汇总 (每设备)${cpLabel}</div>
+                    <div class="config-summary" style="margin-bottom:0.75rem">
+                        seq=<span>${seqDisp}</span> (${cfg.totalTokens.toLocaleString()} tokens) × bs=${cfg.bs}
+                        &nbsp;|&nbsp; ${cfg.ngpus}卡 TP=${cfg.tp} PCP=${cfg.pcp} ${epLabel}
+                        ${cfg.pcp > 1 ? ` | 本地token: <span>${cfg.S.toLocaleString()}</span>` : ""}
+                    </div>
+                    <div class="result-row"><span class="label">Attention (×80)</span><span class="value">${fmtFlops(sectionFlops.attn)} ${cfg.pcp > 1 ? diffStr(baselineSectionFlops.attn, sectionFlops.attn) : ""}</span></div>
+                    <div class="result-row"><span class="label">Dense FFN (×1)</span><span class="value">${fmtFlops(sectionFlops.dense)} ${cfg.pcp > 1 ? diffStr(baselineSectionFlops.dense, sectionFlops.dense) : ""}</span></div>
+                    <div class="result-row"><span class="label">MoE (×79)</span><span class="value">${fmtFlops(sectionFlops.moe)} ${cfg.pcp > 1 ? diffStr(baselineSectionFlops.moe, sectionFlops.moe) : ""}</span></div>
+                    <div class="result-row total"><span class="label">计算总量</span><span class="value">${fmtFlops(totalFlops)} ${cfg.pcp > 1 ? diffStr(baselineFlops, totalFlops) : ""}</span></div>
+                    <div class="result-row" style="margin-top:0.5rem"><span class="label">通信总量</span><span class="value">${fmtBytes(totalComm)} ${cfg.pcp > 1 ? diffStr(baselineComm, totalComm) : ""}</span></div>
+                    <div class="perf-bar">
+                        <div class="perf-bar-track">
+                            <div class="perf-bar-seg" style="width:${attnPct}%;background:var(--accent)">${attnPct > 8 ? Math.round(attnPct) + "%" : ""}</div>
+                            <div class="perf-bar-seg" style="width:${densePct}%;background:var(--cyan)">${densePct > 8 ? Math.round(densePct) + "%" : ""}</div>
+                            <div class="perf-bar-seg" style="width:${moePct}%;background:var(--orange)">${moePct > 8 ? Math.round(moePct) + "%" : ""}</div>
+                        </div>
+                        <div class="perf-legend">
+                            <span><span class="perf-legend-dot" style="background:var(--accent)"></span>Attn ${attnPct.toFixed(1)}%</span>
+                            <span><span class="perf-legend-dot" style="background:var(--cyan)"></span>Dense ${densePct.toFixed(1)}%</span>
+                            <span><span class="perf-legend-dot" style="background:var(--orange)"></span>MoE ${moePct.toFixed(1)}%</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+        // PCP comparison
+        if (cfg.pcp > 1) {
+          html += `
+                <div class="result-section">
+                    <div class="section-title">对比: TP${cfg.tp}×PCP${cfg.pcp} vs 纯 TP${cfg.ngpus}</div>
+                    <div class="result-row"><span class="label">计算总量</span><span class="value">${fmtFlops(baselineFlops)} → ${fmtFlops(totalFlops)} ${diffStr(baselineFlops, totalFlops)}</span></div>
+                    <div class="result-row"><span class="label">通信总量</span><span class="value">${fmtBytes(baselineComm)} → ${fmtBytes(totalComm)} ${diffStr(baselineComm, totalComm)}</span></div>
+                    <div class="cp-note" style="margin-top:0.5rem">
+                        Attention FLOPs 不变 (S²×Nh/ngpus)，MoE/FFN GEMM 随本地 token 减少。<br>
+                        新增 AG-KV 通信，TP AllReduce 数据量减少。
+                    </div>
+                </div>`;
+        }
+
+        // Per-op comparison table (PCP vs pure TP)
+        if (cfg.pcp > 1) {
+          const bCfg = {
+            ...cfg,
+            tp: cfg.ngpus,
+            pcp: 1,
+            S: cfg.totalTokens,
+            S_full: cfg.totalTokens,
+          };
+          const bOps = buildOps(bCfg);
+
+          // Build maps: id → {flops, commBytes, count, name}
+          const baseMap = {};
+          bOps.forEach((op) => {
+            if (!op.section) baseMap[op.id] = op;
+          });
+          const curMap = {};
+          ops.forEach((op) => {
+            if (!op.section) curMap[op.id] = op;
+          });
+
+          html += `
+                <div class="result-section">
+                    <div class="section-title">逐算子对比: TP${cfg.tp}×PCP${cfg.pcp} vs 纯 TP${cfg.ngpus}</div>
+                    <table class="cmp-table">
+                        <thead><tr>
+                            <th>算子</th>
+                            <th>纯TP FLOPs</th>
+                            <th>当前 FLOPs</th>
+                            <th>变化</th>
+                            <th>纯TP 通信</th>
+                            <th>当前通信</th>
+                            <th>变化</th>
+                        </tr></thead><tbody>`;
+
+          ops.forEach((op) => {
+            if (op.section) {
+              html += `<tr class="section-header"><td colspan="7">${op.section}</td></tr>`;
+              return;
+            }
+            const base = baseMap[op.id];
+            const curF = op.flops * op.count;
+            const curC = op.commBytes * op.count;
+            const baseF = base ? base.flops * base.count : 0;
+            const baseC = base ? base.commBytes * base.count : 0;
+
+            const flopsDiff = diffStr(baseF, curF);
+            const commDiff = diffStr(baseC, curC);
+
+            // Mark new ops (exist in current but not baseline)
+            const isNew = !base;
+            // Mark gone ops would need reverse iteration; skip for now
+
+            html += `<tr>
+                        <td class="cmp-name">${op.name}${isNew ? ' <span class="cmp-new">(新增)</span>' : ""}</td>
+                        <td class="cmp-base">${baseF > 0 ? fmtFlops(baseF) : "—"}</td>
+                        <td class="cmp-cur">${curF > 0 ? fmtFlops(curF) : "—"}</td>
+                        <td class="cmp-diff">${curF === baseF ? '<span style="color:var(--text-dim)">—</span>' : flopsDiff || "—"}</td>
+                        <td class="cmp-base">${baseC > 0 ? fmtBytes(baseC) : "—"}</td>
+                        <td class="cmp-cur">${curC > 0 ? fmtBytes(curC) : "—"}</td>
+                        <td class="cmp-diff">${curC === baseC ? '<span style="color:var(--text-dim)">—</span>' : commDiff || "—"}</td>
+                    </tr>`;
+          });
+
+          // Show ops only in baseline (removed in current config)
+          Object.keys(baseMap).forEach((id) => {
+            if (!curMap[id]) {
+              const base = baseMap[id];
+              const baseF = base.flops * base.count;
+              const baseC = base.commBytes * base.count;
+              html += `<tr>
+                        <td class="cmp-name">${base.name} <span class="cmp-gone">(移除)</span></td>
+                        <td class="cmp-base">${baseF > 0 ? fmtFlops(baseF) : "—"}</td>
+                        <td class="cmp-cur">—</td>
+                        <td class="cmp-diff">${baseF > 0 ? '<span class="diff-negative">↓100%</span>' : "—"}</td>
+                        <td class="cmp-base">${baseC > 0 ? fmtBytes(baseC) : "—"}</td>
+                        <td class="cmp-cur">—</td>
+                        <td class="cmp-diff">${baseC > 0 ? '<span class="diff-negative">↓100%</span>' : "—"}</td>
+                    </tr>`;
+            }
+          });
+
+          html += `</tbody></table></div>`;
+        }
+
+        // Op table
+        html += `
+                <div class="result-section">
+                    <div class="section-title">逐算子明细</div>
+                    <table class="op-table">
+                        <thead><tr>
+                            <th>算子</th>
+                            <th>Shape (每设备)</th>
+                            <th style="text-align:center">×</th>
+                            <th style="text-align:right">单次 FLOPs</th>
+                            <th style="text-align:right">总 FLOPs</th>
+                            <th style="text-align:right">通信量</th>
+                        </tr></thead><tbody>`;
+
+        ops.forEach((op) => {
+          if (op.section) {
+            html += `<tr class="section-header"><td colspan="6">${op.section}</td></tr>`;
+            return;
+          }
+          const totalF = op.flops * op.count;
+          const totalC = op.commBytes * op.count;
+          html += `<tr>
+                    <td class="op-name">${op.name}</td>
+                    <td class="op-shape">${op.shape}</td>
+                    <td class="op-count">${op.count}</td>
+                    <td class="op-flops">${op.flops > 0 ? fmtFlops(op.flops) : "—"}</td>
+                    <td class="op-total">${totalF > 0 ? fmtFlops(totalF) : "—"}</td>
+                    <td class="op-bytes">${totalC > 0 ? fmtBytes(totalC) + ' <span class="op-comm">(' + op.commDesc + ")</span>" : "—"}</td>
+                </tr>`;
+        });
+
+        html += `</tbody></table></div>`;
+        document.getElementById("results").innerHTML = html;
+      }
+
+      // Events
+      document.getElementById("ngpus").addEventListener("change", () => {
+        updateTPOptions();
+        render();
+      });
+      document.getElementById("tp_size").addEventListener("change", () => {
+        updatePCP();
+        render();
+      });
+      document
+        .querySelectorAll("#seq_len,#seq_unit,#batch_size,#dtype")
+        .forEach((el) => {
+          el.addEventListener("input", render);
+          el.addEventListener("change", render);
+        });
+      document.getElementById("enable_ep").addEventListener("change", render);
+
+      updateTPOptions();
+      updatePCP();
+      render();
+    </script>
+  </body>
+</html>

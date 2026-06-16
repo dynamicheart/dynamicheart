@@ -3,30 +3,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tools</title>
+  <title>Model Profiling Tools</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-    .container { max-width: 480px; width: 100%; padding: 2rem; }
-    h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+    .container { max-width: 520px; width: 100%; padding: 2rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .subtitle { font-size: 0.875rem; color: #666; margin-bottom: 1.5rem; }
     .tools { list-style: none; }
     .tools a { display: block; padding: 1rem; margin-bottom: 0.75rem; background: #fff; border-radius: 8px; text-decoration: none; color: #333; border: 1px solid #e0e0e0; transition: border-color 0.2s; }
     .tools a:hover { border-color: #999; }
     .tools .name { font-weight: 600; }
     .tools .desc { font-size: 0.875rem; color: #666; margin-top: 0.25rem; }
+    .tools .author { font-size: 0.75rem; color: #999; margin-top: 0.25rem; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Tools</h1>
+    <h1>Model Profiling Tools</h1>
+    <p class="subtitle">LLM 推理算子理论规模分析</p>
     <ul class="tools">
-      <li><a href="tools/pdf_watermark/">
-        <div class="name">PDF Watermark</div>
-        <div class="desc">为 PDF 添加自定义文字水印</div>
+      <li><a href="ds_v4_decode_fc_analyzer.html">
+        <div class="name">Decode FC 理论规模分析器</div>
+        <div class="desc">DS V3/R1 & Hy-V3 decode 阶段逐算子 FLOPs + 访存量分析</div>
       </a></li>
-      <li><a href="tools/model-profiling/">
-        <div class="name">Model Profiling</div>
-        <div class="desc">LLM 推理算子理论规模分析 (FLOPs + 访存)</div>
+      <li><a href="hy3_prefill_flops_analyzer.html">
+        <div class="name">HY3-Preview Prefill FLOPs 分析器</div>
+        <div class="desc">Hy-V3 prefill 阶段逐算子运算量 + 通信量定量分析</div>
+        <div class="author">Author: 崔成屹</div>
       </a></li>
     </ul>
   </div>

@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Decode FC 理论规模分析器</title>
+    <style>
+      :root {
+        --bg: #1a1b26;
+        --surface: #24283b;
+        --surface2: #2f3549;
+        --border: #414868;
+        --text: #c0caf5;
+        --text-dim: #565f89;
+        --accent: #7aa2f7;
+        --accent2: #bb9af7;
+        --green: #9ece6a;
+        --orange: #ff9e64;
+        --red: #f7768e;
+        --cyan: #7dcfff;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 2rem;
+      }
+      .container { max-width: 1500px; margin: 0 auto; }
+      h1 { text-align: center; color: var(--accent); font-size: 1.5rem; margin-bottom: 0.5rem; }
+      .subtitle { text-align: center; color: var(--text-dim); font-size: 0.85rem; margin-bottom: 2rem; }
+      .grid { display: grid; grid-template-columns: 280px 1fr; gap: 1.5rem; }
+      @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+      .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
+      .panel-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent2); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+      .input-group { margin-bottom: 1rem; }
+      .input-group label { display: block; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.3rem; }
+      .input-group input, .input-group select { width: 100%; padding: 0.5rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: inherit; font-size: 0.9rem; }
+      .input-group input:focus, .input-group select:focus { outline: none; border-color: var(--accent); }
+      .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+      .toggle-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+      .toggle-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent2); }
+      .toggle-row label { font-size: 0.8rem; color: var(--text); cursor: pointer; }
+      .config-summary { background: var(--bg); border-radius: 4px; padding: 0.6rem 0.75rem; font-size: 0.75rem; color: var(--text-dim); line-height: 1.6; }
+      .result-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+      .result-section .section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); margin-bottom: 0.75rem; }
+      .total-section { background: linear-gradient(135deg, var(--surface2), var(--surface)); border-color: var(--accent); }
+      .total-section .section-title { color: var(--green); font-size: 0.85rem; }
+      .result-row { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0; font-size: 0.85rem; }
+      .result-row .label { color: var(--text-dim); }
+      .result-row .value { color: var(--text); font-weight: 500; }
+      .result-row.total { border-top: 1px solid var(--border); margin-top: 0.5rem; padding-top: 0.6rem; font-weight: 600; }
+      .result-row.total .value { color: var(--green); }
+      .perf-bar { margin-top: 0.75rem; }
+      .perf-bar-track { height: 22px; background: var(--bg); border-radius: 4px; overflow: hidden; display: flex; }
+      .perf-bar-seg { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: var(--bg); font-weight: 600; min-width: 1px; }
+      .perf-legend { display: flex; gap: 0.75rem; margin-top: 0.4rem; flex-wrap: wrap; font-size: 0.68rem; color: var(--text-dim); }
+      .perf-legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 0.2rem; vertical-align: middle; }
+      .op-table { width: 100%; border-collapse: collapse; font-size: 0.73rem; }
+      .op-table th { text-align: left; padding: 0.5rem 0.4rem; color: var(--accent); border-bottom: 1px solid var(--border); font-weight: 500; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; }
+      .op-table td { padding: 0.4rem 0.4rem; border-bottom: 1px solid var(--surface2); }
+      .op-table tr:hover td { background: var(--surface2); }
+      .op-table .section-header td { background: var(--surface2); font-weight: 600; color: var(--accent2); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.6rem 0.4rem; }
+      .op-table .op-name { color: var(--text); font-weight: 500; }
+      .op-table .op-shape { color: var(--cyan); font-size: 0.68rem; }
+      .op-table .op-flops { color: var(--green); text-align: right; font-weight: 500; }
+      .op-table .op-bytes { color: var(--accent2); text-align: right; font-size: 0.7rem; }
+      .op-table .op-count { color: var(--text-dim); text-align: center; }
+      .op-table .op-total { color: var(--green); text-align: right; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Decode FC 理论规模分析器</h1>
+  <p class="subtitle">逐算子 FLOPs + 访存量定量分析 | Decode 阶段 per-device</p>
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <div class="panel-title">参数配置</div>
+        <div class="input-group"><label>模型</label>
+          <select id="model">
+            <option value="dsv3" selected>DeepSeek V3/R1</option>
+            <option value="hyv3">Hy-V3 (HY3-Preview)</option>
+          </select>
+        </div>
+        <div class="input-row">
+          <div class="input-group"><label>Batch Size</label><input type="number" id="bs" value="1" min="1" /></div>
+          <div class="input-group"><label>qlen (decode)</label><input type="number" id="qlen" value="1" min="1" /></div>
+        </div>
+        <div class="input-group"><label>卡数</label>
+          <select id="ngpus"><option value="8">8</option><option value="16" selected>16</option><option value="32">32</option></select>
+        </div>
+        <div class="input-row">
+          <div class="input-group"><label>TP</label><select id="tp_size"></select></div>
+          <div class="input-group"><label>EP (卡数/TP)</label><input type="text" id="ep_display" readonly style="opacity:0.7;cursor:not-allowed"/></div>
+        </div>
+        <div class="toggle-row"><input type="checkbox" id="enable_ep" checked /><label for="enable_ep">启用 EP (All2All dispatch)</label></div>
+      </div>
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-title">模型参数</div>
+        <div class="config-summary" id="model_info"></div>
+      </div>
+    </div>
+    <div class="results" id="results"></div>
+  </div>
+</div>
+<script>
+const MODELS = {
+  dsv3: {
+    name: 'DeepSeek V3/R1',
+    H: 7168, Nh: 128, Nkv: 128, D: 128,
+    q_lora: 1536, kv_lora: 512,
+    L: 61, dense_layers: 3, mtp: 2,
+    Nexp: 256, topK: 8, Edim: 2048, ffn_dim: 18432,
+    vocab: 129280,
+    mla: true,
+  },
+  hyv3: {
+    name: 'Hy-V3 (HY3-Preview)',
+    H: 4096, Nh: 64, Nkv: 8, D: 128,
+    q_lora: 0, kv_lora: 0,
+    L: 80, dense_layers: 1, mtp: 0,
+    Nexp: 192, topK: 8, Edim: 1536, ffn_dim: 13312,
+    vocab: 151936,
+    mla: false,
+  }
+};
+
+function getModel() { return MODELS[document.getElementById('model').value]; }
+
+function getCfg() {
+  const m = getModel();
+  const bs = parseInt(document.getElementById('bs').value) || 1;
+  const qlen = parseInt(document.getElementById('qlen').value) || 1;
+  const M = bs * qlen;
+  const ngpus = parseInt(document.getElementById('ngpus').value);
+  const tp = parseInt(document.getElementById('tp_size').value);
+  const ep = document.getElementById('enable_ep').checked;
+  const ep_size = ngpus / tp;
+  return { m, bs, qlen, M, ngpus, tp, ep, ep_size };
+}
+
+function fmtFlops(f) {
+  if (f >= 1e15) return (f/1e15).toFixed(2)+' PFLOPs';
+  if (f >= 1e12) return (f/1e12).toFixed(2)+' TFLOPs';
+  if (f >= 1e9) return (f/1e9).toFixed(2)+' GFLOPs';
+  if (f >= 1e6) return (f/1e6).toFixed(2)+' MFLOPs';
+  return f.toFixed(0)+' FLOPs';
+}
+function fmtBytes(b) {
+  if (b >= 1e12) return (b/1e12).toFixed(2)+' TB';
+  if (b >= 1e9) return (b/1e9).toFixed(2)+' GB';
+  if (b >= 1e6) return (b/1e6).toFixed(2)+' MB';
+  if (b >= 1e3) return (b/1e3).toFixed(2)+' KB';
+  return b+' B';
+}
+
+function buildOps(cfg) {
+  const { m, M, ngpus, tp, ep, ep_size } = cfg;
+  const ops = [];
+
+  if (m.mla) {
+    // === MLA Attention ===
+    const attn_layers = m.L + m.mtp; // 63
+    ops.push({section: `Attention (×${attn_layers} 层, MLA)`});
+
+    // fused_qkv_a_proj: INT8, M×7168 → 2112 (q_lora=1536 + kv_lora=512 + 64 rope_k)
+    const qkv_a_N = m.q_lora + m.kv_lora + m.D/2; // 1536+512+64=2112
+    ops.push({name:'fused_qkv_a_proj', dtype:'INT8', tp_split:'无',
+      M_val:M, K:m.H, N:qkv_a_N,
+      flops: 2*M*m.H*qkv_a_N, weight: m.H*qkv_a_N*1,
+      act_r: M*m.H*1, act_w: M*qkv_a_N*2, count: attn_layers});
+
+    // q_b_proj: INT8, column split by TP
+    const q_b_N = m.D * m.Nh / tp; // 128*128/TP
+    ops.push({name:'q_b_proj', dtype:'INT8', tp_split:'column',
+      M_val:M, K:m.q_lora, N:q_b_N,
+      flops: 2*M*m.q_lora*q_b_N, weight: m.q_lora*q_b_N*1,
+      act_r: M*m.q_lora*1, act_w: M*q_b_N*2, count: attn_layers});
+
+    // w_uk_bmm: INT8 BMM, bs_bmm = Nh/TP
+    const bs_bmm = m.Nh / tp;
+    ops.push({name:'w_uk_bmm', dtype:'INT8(bmm)', tp_split:'切head',
+      M_val:M, K:m.D, N:m.kv_lora, bmm_bs: bs_bmm,
+      flops: bs_bmm*2*M*m.kv_lora*m.D, weight: bs_bmm*m.D*m.kv_lora*1,
+      act_r: bs_bmm*M*m.D*1, act_w: bs_bmm*M*m.kv_lora*2, count: attn_layers});
+
+    // w_uv_bmm: INT8 BMM
+    ops.push({name:'w_uv_bmm', dtype:'INT8(bmm)', tp_split:'切head',
+      M_val:M, K:m.kv_lora, N:m.D, bmm_bs: bs_bmm,
+      flops: bs_bmm*2*M*m.D*m.kv_lora, weight: bs_bmm*m.kv_lora*m.D*1,
+      act_r: bs_bmm*M*m.kv_lora*1, act_w: bs_bmm*M*m.D*2, count: attn_layers});
+
+    // o_proj: INT8, row split
+    const o_K = m.D * m.Nh / tp; // 128*128/TP
+    ops.push({name:'o_proj', dtype:'INT8', tp_split:'row',
+      M_val:M, K:o_K, N:m.H,
+      flops: 2*M*o_K*m.H, weight: o_K*m.H*1,
+      act_r: M*o_K*1, act_w: M*m.H*2, count: attn_layers});
+
+  } else {
+    // === Standard MHA (Hy-V3) ===
+    const attn_layers = m.L;
+    const qH = m.Nh / tp;
+    const kvH = m.Nkv / tp;
+    const qkv_N = (qH + 2*kvH) * m.D;
+    ops.push({section: `Attention (×${attn_layers} 层, MHA)`});
+
+    ops.push({name:'qkv_proj', dtype:'INT8', tp_split:'column',
+      M_val:M, K:m.H, N:qkv_N,
+      flops: 2*M*m.H*qkv_N, weight: m.H*qkv_N*1,
+      act_r: M*m.H*1, act_w: M*qkv_N*2, count: attn_layers});
+
+    const o_K = qH * m.D;
+    ops.push({name:'o_proj', dtype:'INT8', tp_split:'row',
+      M_val:M, K:o_K, N:m.H,
+      flops: 2*M*o_K*m.H, weight: o_K*m.H*1,
+      act_r: M*o_K*1, act_w: M*m.H*2, count: attn_layers});
+  }
+
+  // === LM Head ===
+  const lm_layers = m.mla ? 1 + m.mtp : 1; // DSv3: 3, Hy-V3: 1
+  ops.push({section: `LM Head (×${lm_layers})`});
+  const lm_N = Math.ceil(m.vocab / tp);
+  ops.push({name:'lm_head', dtype:'BF16', tp_split:'column',
+    M_val:M, K:m.H, N:lm_N,
+    flops: 2*M*m.H*lm_N, weight: m.H*lm_N*2,
+    act_r: M*m.H*2, act_w: M*lm_N*2, count: lm_layers});
+
+  // === Dense MLP ===
+  const dense_layers = m.dense_layers;
+  if (dense_layers > 0) {
+    ops.push({section: `Dense MLP (×${dense_layers} 层)`});
+    const ffn_tp = Math.floor(m.ffn_dim / tp);
+    ops.push({name:'gate_up_proj', dtype:'INT8', tp_split:'column',
+      M_val:M, K:m.H, N:2*ffn_tp,
+      flops: 2*M*m.H*2*ffn_tp, weight: m.H*2*ffn_tp*1,
+      act_r: M*m.H*1, act_w: M*2*ffn_tp*2, count: dense_layers});
+    ops.push({name:'down_proj', dtype:'INT8', tp_split:'row',
+      M_val:M, K:ffn_tp, N:m.H,
+      flops: 2*M*ffn_tp*m.H, weight: ffn_tp*m.H*1,
+      act_r: M*ffn_tp*1, act_w: M*m.H*2, count: dense_layers});
+  }
+
+  // === Shared Expert (不切TP) ===
+  const moe_layers = m.L - m.dense_layers + m.mtp; // DSv3: 58+2=60, Hy-V3: 79
+  ops.push({section: `Shared Expert (×${moe_layers} 层, 不切TP)`});
+  ops.push({name:'se_gate_up', dtype:'INT8', tp_split:'无',
+    M_val:M, K:m.H, N:2*m.Edim,
+    flops: 2*M*m.H*2*m.Edim, weight: m.H*2*m.Edim*1,
+    act_r: M*m.H*1, act_w: M*2*m.Edim*2, count: moe_layers});
+  ops.push({name:'se_down', dtype:'INT8', tp_split:'无',
+    M_val:M, K:m.Edim, N:m.H,
+    flops: 2*M*m.Edim*m.H, weight: m.Edim*m.H*1,
+    act_r: M*m.Edim*1, act_w: M*m.H*2, count: moe_layers});
+
+  // === Gate ===
+  ops.push({section: `Router Gate (×${moe_layers} 层)`});
+  const gate_M = ep ? Math.ceil(M / ep_size) : M;
+  ops.push({name:'gate', dtype:'FP32', tp_split:'无',
+    M_val:gate_M, K:m.H, N:m.Nexp,
+    flops: 2*gate_M*m.H*m.Nexp, weight: m.H*m.Nexp*4,
+    act_r: gate_M*m.H*4, act_w: gate_M*m.Nexp*4, count: moe_layers});
+
+  // === Routed Expert ===
+  if (ep) {
+    const experts_per_ep = Math.floor(m.Nexp / ep_size);
+    const moe_M = M * m.topK / ep_size;
+    ops.push({section: `Routed Expert (×${moe_layers} 层, EP mode, ${experts_per_ep} experts/card)`});
+    ops.push({name:'expert_gate_up', dtype:'INT8', tp_split:'无',
+      M_val:moe_M, K:m.H, N:2*m.Edim,
+      flops: 2*moe_M*m.H*2*m.Edim, weight: m.H*2*m.Edim*1*experts_per_ep,
+      act_r: moe_M*m.H*1, act_w: moe_M*2*m.Edim*2, count: moe_layers,
+      note: `M=${M}×topK${m.topK}/${ep_size}EP=${moe_M}, weight×${experts_per_ep}experts`});
+    ops.push({name:'expert_down', dtype:'INT8', tp_split:'无',
+      M_val:moe_M, K:m.Edim, N:m.H,
+      flops: 2*moe_M*m.Edim*m.H, weight: m.Edim*m.H*1*experts_per_ep,
+      act_r: moe_M*m.Edim*1, act_w: moe_M*m.H*2, count: moe_layers,
+      note: `weight×${experts_per_ep}experts`});
+  } else {
+    // ETP: 全卡切权重
+    const moe_M = M * m.topK;
+    const edim_tp = Math.floor(m.Edim / ngpus);
+    ops.push({section: `Routed Expert (×${moe_layers} 层, ETP mode, 切权重/${ngpus})`});
+    ops.push({name:'expert_gate_up', dtype:'INT8', tp_split:`column/${ngpus}`,
+      M_val:moe_M, K:m.H, N:2*edim_tp,
+      flops: 2*moe_M*m.H*2*edim_tp, weight: m.H*2*edim_tp*1*m.Nexp,
+      act_r: moe_M*m.H*1, act_w: moe_M*2*edim_tp*2, count: moe_layers,
+      note: `M=${M}×topK${m.topK}=${moe_M}, weight×${m.Nexp}experts`});
+    ops.push({name:'expert_down', dtype:'INT8', tp_split:`row/${ngpus}`,
+      M_val:moe_M, K:edim_tp, N:m.H,
+      flops: 2*moe_M*edim_tp*m.H, weight: edim_tp*m.H*1*m.Nexp,
+      act_r: moe_M*edim_tp*1, act_w: moe_M*m.H*2, count: moe_layers,
+      note: `weight×${m.Nexp}experts`});
+  }
+
+  // === MTP eh_proj (DS V3 only) ===
+  if (m.mtp > 0) {
+    ops.push({section: `MTP eh_proj (×${m.mtp})`});
+    ops.push({name:'eh_proj', dtype:'BF16', tp_split:'无',
+      M_val:M, K:m.H*2, N:m.H,
+      flops: 2*M*(m.H*2)*m.H, weight: (m.H*2)*m.H*2,
+      act_r: M*(m.H*2)*2, act_w: M*m.H*2, count: m.mtp});
+  }
+
+  return ops;
+}
+
+function render() {
+  const cfg = getCfg();
+  const ops = buildOps(cfg);
+  const m = cfg.m;
+
+  // Update model info
+  const info = document.getElementById('model_info');
+  if (m.mla) {
+    info.innerHTML = `H=<span style="color:var(--cyan)">${m.H}</span> heads=<span style="color:var(--cyan)">${m.Nh}</span> D=<span style="color:var(--cyan)">${m.D}</span><br>`
+      + `q_lora=<span style="color:var(--cyan)">${m.q_lora}</span> kv_lora=<span style="color:var(--cyan)">${m.kv_lora}</span><br>`
+      + `${m.L} layers (${m.dense_layers} dense + ${m.L-m.dense_layers} MoE) + ${m.mtp} MTP<br>`
+      + `${m.Nexp} experts top-${m.topK}, shared=1<br>`
+      + `expert_dim=<span style="color:var(--cyan)">${m.Edim}</span> ffn_dim=<span style="color:var(--cyan)">${m.ffn_dim}</span><br>`
+      + `vocab=<span style="color:var(--cyan)">${m.vocab}</span>`;
+  } else {
+    info.innerHTML = `H=<span style="color:var(--cyan)">${m.H}</span> heads=<span style="color:var(--cyan)">${m.Nh}</span>(kv:<span style="color:var(--cyan)">${m.Nkv}</span>) D=<span style="color:var(--cyan)">${m.D}</span><br>`
+      + `${m.L} layers (${m.dense_layers} dense + ${m.L-m.dense_layers} MoE)<br>`
+      + `${m.Nexp} experts top-${m.topK}, shared=1<br>`
+      + `expert_dim=<span style="color:var(--cyan)">${m.Edim}</span> ffn_dim=<span style="color:var(--cyan)">${m.ffn_dim}</span><br>`
+      + `vocab=<span style="color:var(--cyan)">${m.vocab}</span>`;
+  }
+
+  // Compute totals
+  let totalFlops = 0, totalWeight = 0, totalActR = 0, totalActW = 0;
+  for (const op of ops) {
+    if (op.section) continue;
+    totalFlops += op.flops * op.count;
+    totalWeight += op.weight * op.count;
+    totalActR += op.act_r * op.count;
+    totalActW += op.act_w * op.count;
+  }
+  const totalMem = totalWeight + totalActR + totalActW;
+
+  // Render
+  let html = '';
+  // Summary
+  html += `<div class="result-section total-section">
+    <div class="section-title">汇总 (per-device, M=${cfg.M})</div>
+    <div class="result-row"><span class="label">总 FLOPs</span><span class="value">${fmtFlops(totalFlops)}</span></div>
+    <div class="result-row"><span class="label">总 Weight 访存</span><span class="value">${fmtBytes(totalWeight)}</span></div>
+    <div class="result-row"><span class="label">总 Act Read</span><span class="value">${fmtBytes(totalActR)}</span></div>
+    <div class="result-row"><span class="label">总 Act Write</span><span class="value">${fmtBytes(totalActW)}</span></div>
+    <div class="result-row total"><span class="label">总访存 (Weight + Act R/W)</span><span class="value">${fmtBytes(totalMem)}</span></div>
+    <div class="result-row"><span class="label">Arithmetic Intensity</span><span class="value">${(totalFlops/totalMem).toFixed(2)} FLOPs/Byte</span></div>
+  </div>`;
+
+  // Table
+  html += `<div class="result-section"><div class="section-title">逐算子明细</div>
+  <table class="op-table"><thead><tr>
+    <th>算子</th><th>dtype</th><th>TP切分</th><th>Shape (M×K×N)</th>
+    <th style="text-align:right">FLOPs</th><th style="text-align:right">Weight</th>
+    <th style="text-align:right">Act Read</th><th style="text-align:right">Act Write</th>
+    <th style="text-align:right">Total Mem</th>
+    <th style="text-align:center">×</th>
+    <th style="text-align:right">总FLOPs</th><th style="text-align:right">总访存</th>
+  </tr></thead><tbody>`;
+
+  for (const op of ops) {
+    if (op.section) {
+      html += `<tr class="section-header"><td colspan="12">${op.section}</td></tr>`;
+      continue;
+    }
+    const shape = op.bmm_bs
+      ? `bs${op.bmm_bs}×${op.M_val}×${op.K}×${op.N}`
+      : `${op.M_val}×${op.K}×${op.N}`;
+    const opMem = op.weight + op.act_r + op.act_w;
+    html += `<tr>
+      <td class="op-name">${op.name}</td>
+      <td>${op.dtype}</td>
+      <td>${op.tp_split}</td>
+      <td class="op-shape">${shape}</td>
+      <td class="op-flops">${fmtFlops(op.flops)}</td>
+      <td class="op-bytes">${fmtBytes(op.weight)}</td>
+      <td class="op-bytes">${fmtBytes(op.act_r)}</td>
+      <td class="op-bytes">${fmtBytes(op.act_w)}</td>
+      <td class="op-bytes">${fmtBytes(opMem)}</td>
+      <td class="op-count">${op.count}</td>
+      <td class="op-total">${fmtFlops(op.flops*op.count)}</td>
+      <td class="op-bytes">${fmtBytes(opMem*op.count)}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+
+  document.getElementById('results').innerHTML = html;
+}
+
+// TP options
+function updateTPOptions() {
+  const ngpus = parseInt(document.getElementById('ngpus').value);
+  const sel = document.getElementById('tp_size');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  for (let t = 1; t <= ngpus; t++) {
+    if (ngpus % t === 0) {
+      sel.innerHTML += `<option value="${t}" ${t==8?'selected':''}>${t}</option>`;
+    }
+  }
+  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  document.getElementById('ep_display').value = ngpus / parseInt(sel.value);
+}
+
+function wireEvents() {
+  const ids = ['model','bs','qlen','ngpus','tp_size','enable_ep'];
+  ids.forEach(id => document.getElementById(id).addEventListener('change', () => {
+    if (id === 'ngpus') updateTPOptions();
+    if (id === 'tp_size') document.getElementById('ep_display').value = parseInt(document.getElementById('ngpus').value) / parseInt(document.getElementById('tp_size').value);
+    render();
+  }));
+  document.getElementById('bs').addEventListener('input', render);
+  document.getElementById('qlen').addEventListener('input', render);
+}
+
+updateTPOptions();
+wireEvents();
+render();
+</script>
+</body>
+</html>
