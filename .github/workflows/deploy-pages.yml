@@ -3,7 +3,7 @@ name: Deploy Pages
 on:
   push:
     branches: [gh_pages]
-    paths: [web/**, index.html, .github/workflows/deploy-pages.yml]
+    paths: [web/**, tools/**, index.html, .github/workflows/deploy-pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -46,6 +46,7 @@ jobs:
           mkdir -p _site/tools/pdf_watermark
           cp index.html _site/
           cp -r web/dist/* _site/tools/pdf_watermark/
+          cp -r tools/model-profiling _site/tools/model-profiling
 
       - uses: actions/upload-pages-artifact@v3
         with:
