@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { PDFDocument, rgb, degrees } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
+import { Font } from 'fonteditor-core'
 import { getCachedFont, loadDefaultFont } from '../utils/font.js'
 
 export function useExport() {
@@ -22,9 +23,24 @@ export function useExport() {
 
       const pdfDoc = await PDFDocument.load(pdfBytes)
       pdfDoc.registerFontkit(fontkit)
-      const font = await pdfDoc.embedFont(fontBytes)
 
       const { text, fontSize, opacity, angle, density } = watermarkParams
+
+      // 字体子集化：只保留水印文本中实际使用的字形，大幅减少嵌入体积
+      const uniqueChars = [...new Set(text)]
+      const subset = uniqueChars.map(ch => ch.codePointAt(0))
+      const fontArrayBuffer = fontBytes.buffer.slice(
+        fontBytes.byteOffset,
+        fontBytes.byteOffset + fontBytes.byteLength
+      )
+      const font_ = Font.create(fontArrayBuffer, {
+        type: 'ttf',
+        subset,
+        hinting: false,
+        kerning: false,
+      })
+      const subsetBuffer = font_.write({ type: 'ttf', toBuffer: false })
+      const font = await pdfDoc.embedFont(new Uint8Array(subsetBuffer))
       const color = getColorRgb()
 
       const pages = pdfDoc.getPages()
