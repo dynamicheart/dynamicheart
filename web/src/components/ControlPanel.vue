@@ -3,6 +3,7 @@
     <div class="panel-header">
       <h1>PDF 水印工具</h1>
       <p class="subtitle">在线预览 &amp; 添加水印</p>
+      <p class="privacy-note">🔒 纯前端工具 · 文件仅在本地浏览器处理，不上传服务器</p>
     </div>
 
     <div class="panel-body">
@@ -193,6 +194,13 @@ async function onFontSelect(e) {
 .subtitle {
   font-size: 13px;
   color: #999;
+}
+
+.privacy-note {
+  font-size: 12px;
+  color: #52c41a;
+  margin-top: 8px;
+  line-height: 1.4;
 }
 
 .panel-body {

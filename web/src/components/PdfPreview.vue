@@ -2,7 +2,7 @@
   <div class="preview-wrapper">
     <!-- Zoom controls -->
     <div class="zoom-bar">
-      <button class="zoom-btn" @click="zoomOut" :disabled="zoom <= 0.5">-</button>
+      <button class="zoom-btn" @click="zoomOut" :disabled="zoom <= 0.25">-</button>
       <span class="zoom-label">{{ Math.round(zoom * 100) }}%</span>
       <button class="zoom-btn" @click="zoomIn" :disabled="zoom >= 3">+</button>
       <button class="zoom-btn text" @click="zoomFit">适应</button>
@@ -44,6 +44,7 @@ const props = defineProps({
   totalPages: Number,
   renderPage: Function,
   drawWatermark: Function,
+  pageWidth: Number,
 })
 
 const emit = defineEmits(['drop-pdf'])
@@ -62,8 +63,20 @@ function setPdfCanvas(p, el) { if (el) pdfCanvases[p] = el }
 function setWmCanvas(p, el) { if (el) wmCanvases[p] = el }
 
 function zoomIn() { zoom.value = Math.min(3, +(zoom.value + 0.25).toFixed(2)) }
-function zoomOut() { zoom.value = Math.max(0.5, +(zoom.value - 0.25).toFixed(2)) }
-function zoomFit() { zoom.value = 1.0 }
+function zoomOut() { zoom.value = Math.max(0.25, +(zoom.value - 0.25).toFixed(2)) }
+
+function zoomFit() {
+  if (!scrollRef.value || !props.pageWidth) {
+    zoom.value = 1.0
+    return
+  }
+  // Container available width minus padding (20px each side)
+  const containerWidth = scrollRef.value.clientWidth - 40
+  // PDF rendered CSS width = pageWidth * scale(1.5) at zoom=1
+  const pdfCssWidth = props.pageWidth * 1.5
+  const fitZoom = containerWidth / pdfCssWidth
+  zoom.value = Math.max(0.25, Math.min(3, +fitZoom.toFixed(2)))
+}
 
 let observer = null
 
@@ -168,7 +181,13 @@ function isInViewport(el) {
 
 // Setup observer when PDF is loaded AND preparing is done (DOM has page elements)
 watch([() => props.pdfLoaded, () => props.preparing], ([loaded, prep]) => {
-  if (loaded && !prep) nextTick(setupObserver)
+  if (loaded && !prep) {
+    // Auto-fit zoom on initial load
+    nextTick(() => {
+      zoomFit()
+      nextTick(setupObserver)
+    })
+  }
 })
 
 watch(() => props.totalPages, () => {
@@ -197,6 +216,7 @@ defineExpose({ redrawAllWatermarks })
 <style scoped>
 .preview-wrapper {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;

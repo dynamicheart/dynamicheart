@@ -15,6 +15,7 @@
       :pdf-loaded="!!pdfDoc"
       :preparing="preparing"
       :total-pages="totalPages"
+      :page-width="pageWidth"
       :render-page="renderPage"
       :draw-watermark="drawWatermarkOverlay"
       @drop-pdf="onDropPdf"
