@@ -40,7 +40,7 @@
           <label class="label">字号</label>
           <span class="value">{{ params.fontSize }}px</span>
         </div>
-        <input type="range" min="16" max="120" step="2" v-model.number="params.fontSize" class="slider" />
+        <input type="range" min="8" max="120" step="2" v-model.number="params.fontSize" class="slider" />
       </div>
 
       <!-- Opacity -->
