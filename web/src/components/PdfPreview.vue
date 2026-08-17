@@ -8,16 +8,28 @@
       <button class="zoom-btn text" @click="zoomFit">适应</button>
     </div>
 
-    <div class="preview-container" ref="scrollRef" @dragover.prevent @drop.prevent="onDrop">
+    <div class="preview-container" ref="scrollRef" tabindex="0" @dragover.prevent @drop.prevent="onDrop" @paste.prevent="onPaste">
       <div v-if="preparing" class="placeholder">
         <div class="page-spinner"></div>
-        <p>正在加载 PDF 文件...</p>
+        <p>正在加载文件...</p>
       </div>
-      <div v-else-if="!pdfLoaded" class="placeholder">
-        <div class="placeholder-icon">PDF</div>
-        <p>将 PDF 拖到此处</p>
-        <p class="hint">或从左侧选择文件</p>
+      <div v-else-if="!fileLoaded" class="placeholder">
+        <div class="placeholder-icon">PDF / IMG</div>
+        <p>将文件拖到此处，或粘贴图片</p>
+        <p class="hint">支持 PDF、PNG、JPG</p>
       </div>
+
+      <!-- Image mode: single canvas -->
+      <div v-else-if="fileMode === 'image'" class="pages">
+        <div class="page-slot">
+          <div class="canvas-wrapper">
+            <canvas ref="imgCanvasRef" class="pdf-canvas"></canvas>
+            <canvas ref="imgWmCanvasRef" class="wm-canvas"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- PDF mode: paginated canvases -->
       <div v-else class="pages">
         <div v-for="p in totalPages" :key="p" class="page-slot" :data-page="p" ref="pageRefs">
           <div class="page-number">{{ p }} / {{ totalPages }}</div>
@@ -39,18 +51,22 @@
 import { ref, reactive, watch, nextTick, onUnmounted } from 'vue'
 
 const props = defineProps({
-  pdfLoaded: Boolean,
+  fileLoaded: Boolean,
+  fileMode: String,   // 'pdf' | 'image' | 'none'
   preparing: Boolean,
   totalPages: Number,
   renderPage: Function,
+  renderImage: Function,
   drawWatermark: Function,
   pageWidth: Number,
 })
 
-const emit = defineEmits(['drop-pdf'])
+const emit = defineEmits(['drop-file'])
 
 const scrollRef = ref(null)
 const pageRefs = ref([])
+const imgCanvasRef = ref(null)
+const imgWmCanvasRef = ref(null)
 const zoom = ref(1.0)
 
 const pdfCanvases = {}
@@ -134,6 +150,10 @@ async function renderSinglePage(pageNum) {
 }
 
 function redrawAllWatermarks() {
+  if (props.fileMode === 'image') {
+    redrawImageWatermark()
+    return
+  }
   const dpr = window.devicePixelRatio || 1
   const scale = 1.5 * zoom.value
   const pagesToRedraw = renderedPages
@@ -165,11 +185,63 @@ function redrawAllWatermarks() {
   }
 }
 
+// --- Image mode rendering ---
+function renderImagePreview() {
+  const canvas = imgCanvasRef.value
+  const wmCanvas = imgWmCanvasRef.value
+  if (!canvas || !props.renderImage) return
+
+  const scale = 1.5 * zoom.value
+  const result = props.renderImage(canvas, scale)
+  if (!result || !wmCanvas) return
+
+  const dpr = window.devicePixelRatio || 1
+  wmCanvas.style.width = result.cssWidth + 'px'
+  wmCanvas.style.height = result.cssHeight + 'px'
+  wmCanvas.width = Math.floor(result.cssWidth * dpr)
+  wmCanvas.height = Math.floor(result.cssHeight * dpr)
+  const ctx = wmCanvas.getContext('2d')
+  ctx.scale(dpr, dpr)
+  props.drawWatermark(wmCanvas, scale, result.cssWidth, result.cssHeight)
+}
+
+function redrawImageWatermark() {
+  const canvas = imgCanvasRef.value
+  const wmCanvas = imgWmCanvasRef.value
+  if (!canvas || !wmCanvas) return
+
+  const dpr = window.devicePixelRatio || 1
+  const scale = 1.5 * zoom.value
+  const cssW = parseFloat(canvas.style.width)
+  const cssH = parseFloat(canvas.style.height)
+  if (!cssW || !cssH) return
+
+  const bufW = Math.floor(cssW * dpr)
+  const bufH = Math.floor(cssH * dpr)
+
+  if (wmCanvas.width !== bufW || wmCanvas.height !== bufH) {
+    wmCanvas.style.width = cssW + 'px'
+    wmCanvas.style.height = cssH + 'px'
+    wmCanvas.width = bufW
+    wmCanvas.height = bufH
+  }
+
+  const ctx = wmCanvas.getContext('2d')
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.clearRect(0, 0, bufW, bufH)
+  ctx.scale(dpr, dpr)
+  props.drawWatermark(wmCanvas, scale, cssW, cssH)
+}
+
 // Re-render all pages on zoom change
 watch(zoom, () => {
-  renderedPages.clear()
-  Object.keys(pageRendered).forEach(k => delete pageRendered[k])
-  nextTick(setupObserver)
+  if (props.fileMode === 'image') {
+    renderImagePreview()
+  } else {
+    renderedPages.clear()
+    Object.keys(pageRendered).forEach(k => delete pageRendered[k])
+    nextTick(setupObserver)
+  }
 })
 
 function isInViewport(el) {
@@ -179,13 +251,16 @@ function isInViewport(el) {
   return rect.bottom > containerRect.top - 300 && rect.top < containerRect.bottom + 300
 }
 
-// Setup observer when PDF is loaded AND preparing is done (DOM has page elements)
-watch([() => props.pdfLoaded, () => props.preparing], ([loaded, prep]) => {
+// Setup observer when file is loaded AND preparing is done
+watch([() => props.fileLoaded, () => props.preparing, () => props.fileMode], ([loaded, prep, mode]) => {
   if (loaded && !prep) {
-    // Auto-fit zoom on initial load
     nextTick(() => {
       zoomFit()
-      nextTick(setupObserver)
+      if (mode === 'image') {
+        nextTick(renderImagePreview)
+      } else {
+        nextTick(setupObserver)
+      }
     })
   }
 })
@@ -201,8 +276,25 @@ watch(() => props.totalPages, () => {
 
 function onDrop(e) {
   const file = e.dataTransfer.files[0]
-  if (file && file.type === 'application/pdf') {
-    emit('drop-pdf', file)
+  if (!file) return
+  const validTypes = ['application/pdf', 'image/png', 'image/jpeg']
+  if (validTypes.includes(file.type)) {
+    emit('drop-file', file)
+  }
+}
+
+function onPaste(e) {
+  const items = e.clipboardData && e.clipboardData.items
+  if (!items) return
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) {
+        e.preventDefault()
+        emit('drop-file', file)
+        return
+      }
+    }
   }
 }
 

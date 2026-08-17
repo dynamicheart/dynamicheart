@@ -2,34 +2,37 @@
   <div class="app">
     <ControlPanel
       :params="params"
-      :pdf-loaded="!!pdfDoc"
+      :file-loaded="fileLoaded"
       :exporting="exporting"
       :export-progress="exportProgress"
       :font-error="fontError"
-      @pdf-loaded="onPdfLoaded"
+      @file-loaded="onFileLoaded"
       @export="onExport"
       @font-loaded="fontError = ''"
     />
     <PdfPreview
       ref="previewRef"
-      :pdf-loaded="!!pdfDoc"
+      :file-loaded="fileLoaded"
+      :file-mode="fileMode"
       :preparing="preparing"
       :total-pages="totalPages"
-      :page-width="pageWidth"
+      :page-width="currentPageWidth"
       :render-page="renderPage"
+      :render-image="renderImage"
       :draw-watermark="drawWatermarkOverlay"
-      @drop-pdf="onDropPdf"
+      @drop-file="onDropFile"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import ControlPanel from './components/ControlPanel.vue'
 import PdfPreview from './components/PdfPreview.vue'
 import { usePdf } from './composables/usePdf.js'
 import { useWatermark } from './composables/useWatermark.js'
 import { useExport } from './composables/useExport.js'
+import { useImage } from './composables/useImage.js'
 import { loadDefaultFont, getCachedFont } from './utils/font.js'
 
 const {
@@ -40,6 +43,7 @@ const {
 
 const { params, drawWatermarkOverlay, getColorRgb, invalidateCache, calcSpacing } = useWatermark()
 const { exporting, exportProgress, exportPdf } = useExport()
+const { imageEl, imageWidth, imageHeight, loadImage, renderImage, exportImage, clear: clearImage } = useImage()
 
 // Preload font on page open so it's ready when user selects a PDF
 onMounted(() => {
@@ -47,30 +51,60 @@ onMounted(() => {
 })
 
 const previewRef = ref(null)
+const fileMode = ref('none')  // 'none' | 'pdf' | 'image'
 const pdfFileName = ref('')
 const fontError = ref('')
 const preparing = ref(false)
 
-async function onPdfLoaded(arrayBuffer, fileName) {
+const fileLoaded = computed(() => {
+  if (fileMode.value === 'pdf') return !!pdfDoc.value
+  if (fileMode.value === 'image') return !!imageEl.value
+  return false
+})
+
+const currentPageWidth = computed(() => {
+  if (fileMode.value === 'image') return imageWidth.value
+  return pageWidth.value
+})
+
+async function onFileLoaded(arrayBuffer, fileName, fileType, mimeType) {
   preparing.value = true
-  pdfFileName.value = fileName || ''
-  await loadPdf(arrayBuffer)
+  if (fileType === 'image') {
+    fileMode.value = 'image'
+    await loadImage(arrayBuffer, fileName, mimeType)
+  } else {
+    fileMode.value = 'pdf'
+    pdfFileName.value = fileName || ''
+    await loadPdf(arrayBuffer)
+  }
   preparing.value = false
 }
 
-async function onDropPdf(file) {
+async function onDropFile(file) {
   preparing.value = true
-  pdfFileName.value = file.name || ''
   const buf = await file.arrayBuffer()
-  try { await loadDefaultFont() } catch {}
-  await loadPdf(buf)
-  fontError.value = getCachedFont() ? '' : '默认字体加载失败，请上传本地字体文件'
+  const isImage = ['image/png', 'image/jpeg'].includes(file.type)
+
+  if (isImage) {
+    fileMode.value = 'image'
+    await loadImage(buf, file.name, file.type)
+  } else {
+    fileMode.value = 'pdf'
+    pdfFileName.value = file.name || ''
+    try { await loadDefaultFont() } catch {}
+    await loadPdf(buf)
+    fontError.value = getCachedFont() ? '' : '默认字体加载失败，请上传本地字体文件'
+  }
   preparing.value = false
 }
 
 async function onExport() {
-  if (!pdfBytes.value) return
-  await exportPdf(pdfBytes.value, params, getColorRgb, calcSpacing, pdfFileName.value)
+  if (fileMode.value === 'pdf') {
+    if (!pdfBytes.value) return
+    await exportPdf(pdfBytes.value, params, getColorRgb, calcSpacing, pdfFileName.value)
+  } else if (fileMode.value === 'image') {
+    await exportImage(drawWatermarkOverlay)
+  }
 }
 
 // Watermark redraw on param change — use RAF for responsive feedback

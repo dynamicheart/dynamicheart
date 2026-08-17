@@ -6,6 +6,12 @@ const FONT_CDN_URLS = [
 
 let cachedFontBytes = null
 
+function fetchWithTimeout(url, timeoutMs = 8000) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer))
+}
+
 export async function loadDefaultFont() {
   if (cachedFontBytes) return cachedFontBytes
 
@@ -13,7 +19,7 @@ export async function loadDefaultFont() {
   const urls = [LOCAL_FONT_PATH, ...FONT_CDN_URLS]
   for (const url of urls) {
     try {
-      const resp = await fetch(url)
+      const resp = await fetchWithTimeout(url)
       if (!resp.ok) continue
       cachedFontBytes = new Uint8Array(await resp.arrayBuffer())
       return cachedFontBytes

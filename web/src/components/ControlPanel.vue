@@ -1,8 +1,8 @@
 <template>
   <aside class="panel">
     <div class="panel-header">
-      <h1>PDF 水印工具</h1>
-      <p class="subtitle">在线预览 &amp; 添加水印</p>
+      <h1>水印工具</h1>
+      <p class="subtitle">支持 PDF / PNG / JPG · 在线预览 &amp; 添加水印</p>
       <p class="privacy-note">🔒 纯前端工具 · 文件仅在本地浏览器处理，不上传服务器</p>
     </div>
 
@@ -11,9 +11,13 @@
       <div class="group">
         <label class="file-btn primary" :class="{ disabled: fontLoading }">
           <span class="file-btn-icon">+</span>
-          {{ pdfLoaded ? '更换 PDF' : '选择 PDF 文件' }}
-          <input type="file" accept=".pdf" hidden @change="onPdfSelect" />
+          {{ fileLoaded ? '更换文件' : '选择文件（PDF/PNG/JPG）' }}
+          <input type="file" accept=".pdf,.png,.jpg,.jpeg" hidden @change="onFileSelect" />
         </label>
+        <button class="file-btn secondary" style="margin-top: 8px" @click="onPasteFromClipboard">
+          <span class="file-btn-icon">📋</span>
+          从剪贴板粘贴图片
+        </button>
       </div>
 
       <div class="group">
@@ -93,8 +97,8 @@
     </div>
 
     <div class="panel-footer">
-      <button class="export-btn" :disabled="!pdfLoaded || exporting || !!(fontError || props.fontError)" @click="$emit('export')">
-        {{ exporting ? `生成中... ${exportProgress}%` : (fontError || props.fontError) ? '请先加载字体' : '导出带水印 PDF' }}
+      <button class="export-btn" :disabled="!fileLoaded || exporting || !!(fontError || props.fontError)" @click="$emit('export')">
+        {{ exporting ? `生成中... ${exportProgress}%` : (fontError || props.fontError) ? '请先加载字体' : '导出带水印文件' }}
       </button>
       <div v-if="exporting" class="export-progress-track">
         <div class="export-progress-fill" :style="{ width: exportProgress + '%' }"></div>
@@ -109,17 +113,20 @@ import { loadLocalFont, loadDefaultFont } from '../utils/font.js'
 
 const props = defineProps({
   params: Object,
-  pdfLoaded: Boolean,
+  fileLoaded: Boolean,
   exporting: Boolean,
   exportProgress: Number,
   fontError: String,
 })
 
-const emit = defineEmits(['pdf-loaded', 'export', 'font-loaded'])
+const emit = defineEmits(['file-loaded', 'export', 'font-loaded'])
 
 const fontLoading = ref(false)
 const fontName = ref('')
 const fontError = ref('')
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg']
+const IMAGE_EXTS = ['.png', '.jpg', '.jpeg']
 
 const densityOptions = [
   { key: 'sparse', label: '疏' },
@@ -134,21 +141,47 @@ const colorOptions = [
   { key: 'custom', label: '自定义', color: null },
 ]
 
-async function onPdfSelect(e) {
+async function onFileSelect(e) {
   const file = e.target.files[0]
   if (!file) return
 
-  fontLoading.value = true
-  fontError.value = ''
-  try {
-    await loadDefaultFont()
-  } catch {
-    fontError.value = '默认字体加载失败，请上传本地字体文件（.ttf/.otf）'
+  const isImage = IMAGE_TYPES.includes(file.type) ||
+    IMAGE_EXTS.some(ext => file.name.toLowerCase().endsWith(ext))
+  const fileType = isImage ? 'image' : 'pdf'
+
+  // Load font for PDF (needed for text watermark embedding)
+  if (!isImage) {
+    fontLoading.value = true
+    fontError.value = ''
+    try {
+      await loadDefaultFont()
+    } catch {
+      fontError.value = '默认字体加载失败，请上传本地字体文件（.ttf/.otf）'
+    }
+    fontLoading.value = false
   }
-  fontLoading.value = false
 
   const buf = await file.arrayBuffer()
-  emit('pdf-loaded', buf, file.name)
+  const mimeType = isImage ? (file.type || 'image/png') : file.type
+  emit('file-loaded', buf, file.name, fileType, mimeType)
+}
+
+async function onPasteFromClipboard() {
+  try {
+    const items = await navigator.clipboard.read()
+    for (const item of items) {
+      const imageType = item.types.find(t => t.startsWith('image/'))
+      if (imageType) {
+        const blob = await item.getType(imageType)
+        const buf = await blob.arrayBuffer()
+        emit('file-loaded', buf, 'clipboard.png', 'image', imageType)
+        return
+      }
+    }
+    alert('剪贴板中没有图片')
+  } catch (err) {
+    alert('无法读取剪贴板，请允许浏览器访问剪贴板权限')
+  }
 }
 
 async function onFontSelect(e) {
